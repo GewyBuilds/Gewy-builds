@@ -46,7 +46,7 @@ export function toast(msg, ms = 2800) {
 }
 
 // Bottom sheet. Returns { el, close }. Any element with [data-close] closes it.
-export function sheet(html, { full = false, onClose } = {}) {
+export function sheet(html, { full = false, onClose, locked = false } = {}) {
   const back = document.createElement('div');
   back.className = 'sheet-back';
   back.innerHTML = `<div class="sheet${full ? ' full' : ''}" role="dialog" aria-modal="true">${html}</div>`;
@@ -66,7 +66,7 @@ export function sheet(html, { full = false, onClose } = {}) {
     onClose && onClose();
   };
   back.addEventListener('click', (e) => {
-    if (e.target === back || e.target.closest('[data-close]')) close();
+    if ((e.target === back && !locked) || e.target.closest('[data-close]')) close();
   });
   return { el: back.firstElementChild, close };
 }
@@ -93,4 +93,12 @@ export function fillPayLink(tpl, order) {
     .replaceAll('{amount_cents}', String(Math.round(order.total * 100)))
     .replaceAll('{order}', encodeURIComponent(order.no || ''))
     .replaceAll('{currency}', cur);
+}
+
+// WhatsApp wants the country code. Greek numbers typed as 69xxxxxxxx or 2xxxxxxxxx get 30 in front.
+export function waNumber(p) {
+  let d = String(p || '').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  else if (d.length === 10 && /^[26]/.test(d)) d = '30' + d;
+  return d;
 }

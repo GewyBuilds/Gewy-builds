@@ -1,9 +1,10 @@
 import * as B from './shared/backend.js';
-import { $, $$, esc, eur, toast, sheet, ago, copy, monthKey, fmtDay } from './shared/ui.js';
+import { HANDOFF_DEF, COURIER_DEF, parseAreas } from './shared/areas.js';
+import { $, $$, esc, eur, toast, sheet, ago, copy, monthKey, fmtDay, waNumber } from './shared/ui.js';
 
 const CFG = globalThis.GEWY_CONFIG || {};
 const S = {
-  view: 'home', user: null, products: [], requests: [], orders: [], subs: [], settings: {},
+  view: 'home', user: null, products: [], requests: [], orders: [], subs: [], devices: [], settings: {},
   ofilter: 'active', stops: [], threadRedraw: null,
 };
 const digits = (s) => String(s || '').replace(/\D/g, '');
@@ -15,13 +16,15 @@ const REQ_LBL = { new: 'New', discussing: 'In talks', quoted: 'Quote sent', appr
 const REQ_OPEN = (r) => !['done', 'closed'].includes(r.status);
 const needsReply = (r) => REQ_OPEN(r) && r.lastFrom === 'customer' && r.status !== 'approved';
 const isPaid = (o) => o.payStatus === 'paid' && o.status !== 'cancelled';
+const isDep = (o) => o.payStatus === 'deposit' && o.status !== 'cancelled';
+const owed = (o) => (o.payStatus === 'paid' ? 0 : o.payStatus === 'deposit' ? Math.max(0, o.total - (o.paidAmount || 0)) : o.total);
 
 /* ---------------------------------------------------------------- frame */
 function frame(title, body, { back = true } = {}) {
   $('#app').innerHTML = `
     <header class="top"><div class="wrap">
       ${back ? '<button class="iconbtn" data-act="home" aria-label="Back">←</button>' : ''}
-      <div class="logo grow">${back ? esc(title) : 'GEWY <b>ADMIN</b>'}</div>
+      <div class="logo grow">${back ? '' : '<svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="17" width="18" height="3" rx="1.5" fill="currentColor" opacity=".35"/><rect x="3" y="12" width="18" height="3" rx="1.5" fill="currentColor" opacity=".6"/><rect x="3" y="7" width="18" height="3" rx="1.5" fill="currentColor" opacity=".85"/><rect x="3" y="2" width="18" height="3" rx="1.5" style="fill:var(--acc)"/></svg>'}<span>${back ? esc(title) : 'GEWY <b>ADMIN</b>'}</span></div>
       ${B.mode === 'demo' ? '<span class="chip blue">DEMO</span>' : ''}
       <button class="iconbtn" data-act="go" data-v="settings" aria-label="Settings">⚙️</button>
     </div></header>
@@ -30,13 +33,13 @@ function frame(title, body, { back = true } = {}) {
 
 function render() {
   if (!S.user) return renderLogin();
-  ({ home: viewHome, products: viewProducts, requests: viewRequests, orders: viewOrders, money: viewMoney, notify: viewNotify, settings: viewSettings }[S.view] || viewHome)();
+  ({ home: viewHome, products: viewProducts, requests: viewRequests, orders: viewOrders, money: viewMoney, audience: viewAudience, notify: viewNotify, settings: viewSettings }[S.view] || viewHome)();
 }
 
 /* ---------------------------------------------------------------- login */
 function renderLogin() {
   $('#app').innerHTML = `<main class="wrap" style="padding-top:12vh">
-    <div class="logo" style="font-size:22px">GEWY <b>ADMIN</b></div>
+    <div class="logo" style="font-size:22px"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="17" width="18" height="3" rx="1.5" fill="currentColor" opacity=".35"/><rect x="3" y="12" width="18" height="3" rx="1.5" fill="currentColor" opacity=".6"/><rect x="3" y="7" width="18" height="3" rx="1.5" fill="currentColor" opacity=".85"/><rect x="3" y="2" width="18" height="3" rx="1.5" style="fill:var(--acc)"/></svg><span>GEWY <b>ADMIN</b></span></div>
     <p class="mut">Sign in to manage your shop.</p>
     ${B.mode === 'demo' ? '<div class="banner demo">🧪 <span><b>DEMO MODE</b> — any email and password works. Data stays in this browser.</span></div>' : ''}
     <label class="f"><span>Email</span><input class="in" id="lE" type="email" autocomplete="username" inputmode="email"></label>
@@ -57,7 +60,8 @@ function viewHome() {
       ${tile('requests', '✏️', 'REQUESTS', openReq ? `${openReq} waiting for you` : 'all answered', openReq)}
       ${tile('orders', '📦', 'ORDERS', `${S.orders.filter((o) => ['new', 'making', 'ready'].includes(o.status)).length} active`, newOrders)}
       ${tile('money', '💶', 'MONEY', `${eur(m.profit)} profit`, 0)}
-      ${B.pushAvailable ? tile('notify', '🔔', 'NOTIFY', B.mode === 'demo' ? 'send an alert' : `${S.subs.filter((x) => x.role === 'shop').length} phones`, 0) : `<button class="tile" data-act="openShop"><span class="ic">🛍️</span><span><div class="tt">VIEW SHOP</div><div class="st">see what customers see</div></span></button>`}
+      ${tile('audience', '👥', 'AUDIENCE', `${S.devices.length} people · ${S.devices.filter((d) => d.installed).length} installed`, 0)}
+      ${B.pushAvailable ? tile('notify', '🔔', 'NOTIFY', B.mode === 'demo' ? 'send an alert' : `${S.subs.filter((x) => x.role === 'shop').length} phones`, 0) : ''}
       ${tile('settings', '⚙️', 'SETTINGS', S.settings.payLink ? 'payments set up' : 'set up payments', S.settings.payLink ? 0 : '!')}
     </div>
     <p class="mut sm" style="text-align:center;margin-top:20px">Customer shop: <a href="./" target="_blank">${esc(new URL('./', location.href).href)}</a></p>`, { back: false });
@@ -167,11 +171,18 @@ function openProductEditor(id) {
 }
 
 /* ------------------------------------------------------------- requests */
+async function deleteRequest(id) {
+  const msgs = await B.getAll('messages', { where: [['requestId', '==', id]] });
+  for (const m of msgs) await B.del('messages', m.id);
+  await B.del('requests', id);
+}
+
 function viewRequests() {
   const rows = [...S.requests].sort((a, b) => (needsReply(b) - needsReply(a)) || (b.updatedAt || 0) - (a.updatedAt || 0));
-  frame('REQUESTS', `<div class="gap"></div>${rows.length ? rows.map((r) => `<button class="card prod" style="padding:14px" data-act="thread" data-id="${esc(r.id)}">
+  frame('REQUESTS', `<div class="gap"></div>${rows.length ? rows.map((r) => `<div class="row" style="align-items:stretch;gap:8px;margin-bottom:10px"><button class="card prod grow" style="padding:14px;margin:0" data-act="thread" data-id="${esc(r.id)}">
       <div class="row between"><b>${esc(r.title)}</b><span class="chip ${REQ_CHIP[r.status] || ''}">${esc(REQ_LBL[r.status] || r.status)}</span></div>
-      <div class="mut sm">${esc(r.name)} · ${esc(ago(r.updatedAt))}${needsReply(r) ? ' · <span style="color:var(--acc2)">● needs reply</span>' : ''}</div></button>`).join('')
+      <div class="mut sm">${esc(r.name)} · ${esc(ago(r.updatedAt))}${needsReply(r) ? ' · <span style="color:var(--acc2)">● needs reply</span>' : ''}</div></button>
+      <button class="btn bad" style="width:48px" data-act="delreq" data-id="${esc(r.id)}" aria-label="Delete">🗑</button></div>`).join('')
     : '<div class="empty">No custom requests yet. When a customer asks for something, it shows up here.</div>'}`);
 }
 
@@ -190,14 +201,16 @@ function openThread(id) {
     $('#tTitle', s.el).textContent = r.title;
     const q = r.quote;
     $('#tInfo', s.el).innerHTML = `<div class="card"><div class="row between"><b>${esc(r.name)}</b>
-        <span class="row"><a class="btn sm" href="tel:${esc(String(r.phone).replace(/[^\d+]/g, ''))}">📞</a><a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${digits(r.phone)}">💬</a></span></div>
+        <span class="row"><a class="btn sm" href="tel:${esc(String(r.phone).replace(/[^\d+]/g, ''))}">📞</a><a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${waNumber(r.phone)}">💬</a></span></div>
       <div class="mono mut sm">${esc(r.phone)}</div>
+      ${r.area ? `<div>📍 ${esc(r.area)}</div>` : ''}
       <div style="white-space:pre-wrap;margin-top:6px">${esc(r.desc)}</div>
       ${r.budget ? `<div class="mut sm" style="margin-top:4px">Budget: ${esc(r.budget)}</div>` : ''}
       ${(r.refImages || []).length ? `<div class="thumbs">${r.refImages.map((u) => `<div class="thumb"><img src="${esc(u)}" data-zoom alt=""></div>`).join('')}</div>` : ''}
       <div class="gap-s"></div>
       <div class="two"><select class="in" id="tSt">${Object.keys(REQ_LBL).map((k) => `<option value="${k}"${k === r.status ? ' selected' : ''}>${REQ_LBL[k]}</option>`).join('')}</select>
-        <button class="btn" data-a="quote">${q ? `Quote ${eur(q.price)} · edit` : '💶 Send price'}</button></div></div>`;
+        <button class="btn" data-a="quote">${q ? `Quote ${eur(q.price)} · edit` : '💶 Send price'}</button></div>
+      <div class="gap-s"></div><button class="btn bad sm block" data-a="delreq">🗑 Delete this request (spam)</button></div>`;
     $('#tSt', s.el).onchange = (e) => B.set('requests', id, { status: e.target.value, updatedAt: Date.now() });
   };
   const drawChat = () => {
@@ -228,10 +241,14 @@ function openThread(id) {
     if (!f) return;
     try { toast('Uploading preview…'); await post($('#tM', s.el).value.trim(), await B.uploadImage(f, 'previews')); $('#tM', s.el).value = ''; } catch (err) { console.error(err); toast('Upload failed'); }
   });
-  s.el.addEventListener('click', (e) => {
+  s.el.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-a]');
     if (!b) return;
     if (b.dataset.a === 'att') $('#tF', s.el).click();
+    if (b.dataset.a === 'delreq') {
+      if (!confirm('Delete this request and its whole chat for good?')) return;
+      try { await deleteRequest(id); s.close(); toast('Deleted'); } catch (err) { console.error(err); toast('Failed: ' + (err.code || err.message)); }
+    }
     if (b.dataset.a === 'send') send();
     if (b.dataset.a === 'quote') {
       const r = getReq();
@@ -267,8 +284,21 @@ function viewOrders() {
       <div class="row between"><b class="mono">${esc(o.no)}</b><span class="chip ${ORDER_CHIP[o.status] || ''}">${esc(ORDER_LBL[o.status] || o.status)}</span></div>
       <div>${esc(o.customer?.name || '—')} · <span class="mono">${eur(o.total)}</span></div>
       <div class="mut sm">${o.items.map((i) => esc(i.name) + ' ×' + i.qty).join(', ')}</div>
-      <div class="chips" style="margin-top:6px"><span class="chip ${o.payStatus === 'paid' ? 'ok' : 'warn'}">${o.payStatus === 'paid' ? 'paid' : o.payMethod === 'online' ? 'waiting for payment' : 'pay at handoff'}</span><span class="chip">${esc(ago(o.createdAt))}</span></div></button>`).join('')
+      <div class="chips" style="margin-top:6px"><span class="chip ${o.payStatus === 'paid' ? 'ok' : 'warn'}">${o.payStatus === 'paid' ? 'paid' : o.payStatus === 'deposit' ? 'deposit paid · ' + eur(owed(o)) + ' left' : o.payMethod === 'deposit' ? 'waiting for deposit' : o.payMethod === 'online' ? 'waiting for payment' : 'pay at handoff'}</span><span class="chip">${esc(ago(o.createdAt))}</span></div></button>`).join('')
       : '<div class="empty">Nothing here.</div>'}`);
+}
+
+// Customers' phones write the prices into the order, so check them against your catalogue before you trust them.
+function priceWarning(o) {
+  if (o.source === 'manual') return '';
+  const probs = [];
+  const sum = (o.items || []).reduce((n, i) => n + (+i.price || 0) * (+i.qty || 0), 0) + (+o.fee || 0);
+  if (Math.abs(sum - o.total) > 0.011) probs.push(`The total (${eur(o.total)}) does not match the items (${eur(sum)}).`);
+  if (!o.requestId) (o.items || []).forEach((i) => {
+    const p = S.products.find((x) => x.id === i.id);
+    if (p && Math.abs((+p.price || 0) - (+i.price || 0)) > 0.011) probs.push(`${i.name}: ordered at ${eur(i.price)}, but your price is ${eur(p.price)}.`);
+  });
+  return probs.length ? `<div class="card" style="border-color:var(--bad);margin-top:10px"><b style="color:var(--bad)">⚠ Check this order</b>${probs.map((x) => `<div class="sm">${esc(x)}</div>`).join('')}<div class="sm mut">Do not ship until it looks right. You can cancel it.</div></div>` : '';
 }
 
 function openOrder(id) {
@@ -279,18 +309,28 @@ function openOrder(id) {
     <div class="hd"><div class="ttl mono">${esc(o.no)}</div><span class="chip ${ORDER_CHIP[o.status] || ''}">${esc(ORDER_LBL[o.status] || o.status)}</span><button class="xbtn" data-close>✕</button></div>
     <div class="card"><b>${esc(c.name || '—')}</b>
       <div class="row" style="margin:6px 0"><a class="btn sm grow" href="tel:${esc(String(c.phone || '').replace(/[^\d+]/g, ''))}">📞 ${esc(c.phone || '')}</a>
-      <a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${digits(c.phone)}">💬</a></div>
-      <div>${o.delivery === 'deliver' ? '🚚 Deliver to: ' : '🤝 Meet-up: '}${esc(c.address || '—')}</div>
+      <a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${waNumber(c.phone)}">💬</a></div>
+      ${c.area ? `<div>📍 ${esc(c.area)}</div>` : ''}
+      <div>${o.delivery === 'boxnow' ? '📦 Box Now locker: ' : o.delivery === 'deliver' ? '🚚 Deliver to: ' : '🤝 Meet-up: '}${esc(c.address || '—')}</div>
       ${c.note ? `<div class="mut" style="margin-top:4px">“${esc(c.note)}”</div>` : ''}
       <div class="mut sm" style="margin-top:6px">${esc(fmtDay(o.createdAt))}${o.source === 'manual' ? ' · manual sale' : ''}</div></div>
+    ${priceWarning(o)}
     <div class="h2">Items</div>
     <div class="card">${o.items.map((i) => `<div class="row between"><span>${esc(i.name)} × ${i.qty}</span><b class="mono">${eur(i.price * i.qty)}</b></div>`).join('')}
+      ${o.fee ? `<div class="row between mut"><span>Delivery fee</span><span class="mono">${eur(o.fee)}</span></div>` : ''}
       <div class="sep"></div><div class="row between"><b>Total</b><b class="mono" style="font-size:20px">${eur(o.total)}</b></div></div>
     <div class="h2">Payment</div>
-    <div class="card"><div class="row between"><span>${o.payMethod === 'online' ? 'Online prepay' : 'Pay at handoff'}</span><span class="chip ${o.payStatus === 'paid' ? 'ok' : 'warn'}">${o.payStatus === 'paid' ? 'PAID' : 'NOT PAID'}</span></div>
+    <div class="card"><div class="row between"><span>${o.payMethod === 'deposit' ? 'Box Now: deposit + rest at locker' : o.payMethod === 'online' ? 'Online prepay' : 'Pay at handoff'}</span><span class="chip ${o.payStatus === 'paid' ? 'ok' : 'warn'}">${o.payStatus === 'paid' ? 'PAID' : o.payStatus === 'deposit' ? 'DEPOSIT PAID' : 'NOT PAID'}</span></div>
+      ${o.payMethod === 'deposit' ? `<div class="row between" style="margin-top:6px"><span class="mut">Deposit (card, now)</span><b class="mono">${eur(o.deposit)}</b></div>
+        <div class="row between"><span class="mut">Rest (Box Now COD)</span><b class="mono">${eur(o.balance)}</b></div>
+        ${o.payStatus !== 'paid' ? `<p class="mut sm" style="margin:8px 0 0">Create the Box Now COD shipment for <b class="mono">${eur(o.balance)}</b>. Ship only after the deposit is in.</p>` : ''}` : ''}
       <div class="gap-s"></div>${o.payStatus === 'paid'
         ? `<div class="mut sm">Paid ${esc(fmtDay(o.paidAt || o.createdAt))}</div><div class="gap-s"></div><button class="btn sm ghost" data-a="unpay">Undo paid</button>`
-        : '<button class="btn ok block" data-a="pay">✅ Mark as paid</button>'}
+        : o.payMethod === 'deposit' && o.payStatus === 'unpaid'
+          ? `<button class="btn ok block" data-a="paydep">✅ Deposit received (${eur(o.deposit)})</button>`
+          : o.payStatus === 'deposit'
+            ? `<button class="btn ok block" data-a="pay">✅ Rest received from Box Now (${eur(o.balance)}) · fully paid</button><div class="gap-s"></div><button class="btn sm ghost" data-a="unpay">Undo deposit</button>`
+            : '<button class="btn ok block" data-a="pay">✅ Mark as paid</button>'}
       <label class="f"><span>What it cost you to make (${esc(CFG.currency || 'EUR')})</span><div class="row"><input class="in grow" id="oC" inputmode="decimal" value="${esc(o.costTotal ?? 0)}"><button class="btn" data-a="cost">Save</button></div></label></div>
     <div class="h2">Status</div>
     <div class="chips">${['new', 'making', 'ready', 'delivered'].map((k) => `<button class="pill${o.status === k ? ' on' : ''}" data-a="st" data-v="${k}">${ORDER_LBL[k]}</button>`).join('')}</div>
@@ -300,13 +340,14 @@ function openOrder(id) {
     if (!b) return;
     const a = b.dataset.a;
     try {
+      if (a === 'paydep') await B.set('orders', id, { payStatus: 'deposit', paidAmount: o.deposit, depositAt: Date.now() });
       if (a === 'pay') await B.set('orders', id, { payStatus: 'paid', paidAt: Date.now(), paidAmount: o.total });
-      if (a === 'unpay') await B.set('orders', id, { payStatus: 'unpaid', paidAt: null });
+      if (a === 'unpay') await B.set('orders', id, { payStatus: 'unpaid', paidAt: null, paidAmount: null });
       if (a === 'cost') { await B.set('orders', id, { costTotal: num($('#oC', s.el).value) }); toast('Saved'); return; }
       if (a === 'st') {
         const v = b.dataset.v;
         const extra = {};
-        if (v === 'delivered' && o.payStatus !== 'paid' && confirm('Delivered. Did the customer pay you? Tap OK to mark as paid.')) Object.assign(extra, { payStatus: 'paid', paidAt: Date.now(), paidAmount: o.total });
+        if (v === 'delivered' && o.payStatus !== 'paid' && confirm(o.payStatus === 'deposit' ? 'Delivered. Did Box Now pay you the rest? Tap OK to mark as fully paid.' : 'Delivered. Did the customer pay you? Tap OK to mark as paid.')) Object.assign(extra, { payStatus: 'paid', paidAt: Date.now(), paidAmount: o.total });
         await B.set('orders', id, { status: v, ...extra });
       }
       if (a === 'cancel') { if (!confirm('Cancel this order?')) return; await B.set('orders', id, { status: 'cancelled' }); }
@@ -319,10 +360,11 @@ function openOrder(id) {
 /* ---------------------------------------------------------------- money */
 function moneyStats() {
   const paid = S.orders.filter(isPaid);
-  const received = paid.reduce((n, o) => n + (o.paidAmount ?? o.total), 0);
+  const paidSum = paid.reduce((n, o) => n + (o.paidAmount ?? o.total), 0);
+  const deposits = S.orders.filter(isDep).reduce((n, o) => n + (o.paidAmount || 0), 0);
   const costs = paid.reduce((n, o) => n + (o.costTotal || 0), 0);
-  const waiting = S.orders.filter((o) => o.payStatus !== 'paid' && o.status !== 'cancelled').reduce((n, o) => n + o.total, 0);
-  return { paid, received, costs, profit: received - costs, waiting };
+  const waiting = S.orders.filter((o) => o.status !== 'cancelled').reduce((n, o) => n + owed(o), 0);
+  return { paid, received: paidSum + deposits, costs, profit: paidSum - costs, waiting };
 }
 
 function viewMoney() {
@@ -389,6 +431,46 @@ function downloadCsv() {
   a.click();
 }
 
+/* ------------------------------------------------------------- audience */
+const dayKey = (ts) => { const d = new Date(ts); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+function viewAudience() {
+  const D = S.devices;
+  const now = Date.now(), DAY = 86400000;
+  const total = D.length;
+  const installed = D.filter((d) => d.installed).length;
+  const newWeek = D.filter((d) => now - d.firstSeen < 7 * DAY).length;
+  const active = D.filter((d) => now - d.lastSeen < 7 * DAY).length;
+  const back = D.filter((d) => (d.visits || 0) > 1).length;
+  const pct = (n) => (total ? Math.round((n / total) * 100) + '%' : '0%');
+  const plat = { android: 0, ios: 0, desktop: 0 };
+  D.forEach((d) => { plat[d.platform] = (plat[d.platform] || 0) + 1; });
+  const days = [];
+  for (let i = 13; i >= 0; i--) { const t0 = new Date(now - i * DAY); days.push({ key: dayKey(t0), label: String(t0.getDate()), n: 0, inst: 0 }); }
+  D.forEach((d) => {
+    const x = days.find((q) => q.key === dayKey(d.firstSeen)); if (x) x.n++;
+    if (d.installedAt) { const y = days.find((q) => q.key === dayKey(d.installedAt)); if (y) y.inst++; }
+  });
+  const max = Math.max(1, ...days.map((q) => q.n));
+  frame('AUDIENCE', `<div class="gap"></div>
+    <div class="stats">
+      <div class="stat"><div class="l">People</div><div class="v">${total}</div></div>
+      <div class="stat"><div class="l">Installed</div><div class="v" style="color:var(--ok)">${installed}</div><div class="mut sm">${pct(installed)} of people</div></div>
+      <div class="stat"><div class="l">New this week</div><div class="v">${newWeek}</div></div>
+      <div class="stat"><div class="l">Active this week</div><div class="v">${active}</div></div>
+    </div>
+    <div class="h2">New people per day · last 14 days</div>
+    <div class="card"><div class="bars">${days.map((q) => `<div class="b"><small>${q.n || ''}</small><i style="height:${Math.max(2, (q.n / max) * 90)}%"></i><small>${esc(q.label)}</small></div>`).join('')}</div>
+      <div class="mut sm" style="margin-top:8px">Installs in the last 14 days: ${days.reduce((n, q) => n + q.inst, 0)}</div></div>
+    <div class="h2">Phones</div>
+    <div class="card"><div class="row between"><span>Android</span><b class="mono">${plat.android || 0}</b></div><div class="sep" style="margin:8px 0"></div>
+      <div class="row between"><span>iPhone</span><b class="mono">${plat.ios || 0}</b></div><div class="sep" style="margin:8px 0"></div>
+      <div class="row between"><span>Computer</span><b class="mono">${plat.desktop || 0}</b></div></div>
+    <div class="h2">Loyalty</div>
+    <div class="card"><div class="row between"><span>Came back at least once</span><b class="mono">${back} · ${pct(back)}</b></div></div>
+    <p class="mut sm">A "person" is one phone or browser, so someone with two devices counts twice. "Installed" means they added it with the install button or opened it from the home screen icon, so iPhones are counted too. Your own test phones are included: use the button below to reset the counts before you launch.</p>
+    <div class="gap-s"></div><button class="btn bad block" data-act="resetAudience">Reset all counts</button>`);
+}
+
 /* --------------------------------------------------------------- notify */
 function viewNotify() {
   const subs = S.subs.filter((x) => x.role === 'shop').length;
@@ -412,6 +494,11 @@ function viewSettings() {
     <label class="f"><span>Shop name</span><input class="in" id="sN" value="${esc(st.shopName || '')}" placeholder="${esc(CFG.shopName || 'GEWY BUILDS')}"></label>
     <label class="f"><span>Short intro (shown on the shop home)</span><textarea class="in" id="sA">${esc(st.about || '')}</textarea></label>
     <label class="f"><span>Your phone / WhatsApp (with country code, e.g. 3069…)</span><input class="in" id="sPh" inputmode="tel" value="${esc(st.phone || '')}"></label>
+    <div class="h2">Business details (shown in Terms and Privacy)</div>
+    <label class="f"><span>Business or your full name</span><input class="in" id="sBN" value="${esc(st.businessName || '')}"></label>
+    <label class="f"><span>Tax ID (AFM), if you have one</span><input class="in" id="sTX" inputmode="numeric" value="${esc(st.taxId || '')}"></label>
+    <label class="f"><span>Contact email</span><input class="in" id="sEM" type="email" value="${esc(st.contactEmail || '')}"></label>
+    <p class="mut sm">The Terms and Privacy pages are a plain-language template. Have an accountant or lawyer read them before you launch.</p>
     <div class="h2">How customers can pay</div>
     <label class="check"><input type="checkbox" id="sH" ${st.payHandoff !== false ? 'checked' : ''}><span><b>Pay at handoff</b><br><span class="mut sm">No payment in the app. They pay you when they receive it.</span></span></label>
     <label class="f"><span>Handoff note (optional)</span><input class="in" id="sHN" value="${esc(st.handoffNote || '')}" placeholder="Cash or Revolut at the door"></label>
@@ -420,6 +507,15 @@ function viewSettings() {
     <div class="chips" style="margin-top:8px"><button class="pill" data-act="presetPaypal">PayPal.me</button><button class="pill" data-act="presetRevolut">Revolut</button><button class="pill" data-act="presetOther">Stripe / Viva / other</button></div>
     <label class="f"><span>Label shown to customers</span><input class="in" id="sLb" value="${esc(st.payLabel || '')}" placeholder="Card / PayPal / Revolut"></label>
     <p class="mut sm">In the link, <span class="mono">{amount}</span> becomes the order total (e.g. 12.50), <span class="mono">{order}</span> the order number. PayPal.me links with {amount} open with the amount filled in. A plain Revolut or Stripe link works too: the app shows the customer the exact amount and order number to use. These pages do not tell the app when someone paid, so you mark orders as paid yourself.</p>
+    <div class="h2">Where you deliver</div>
+    <label class="f"><span>Areas for hand-off / my own delivery (one per line)</span><textarea class="in" id="sHA" rows="3">${esc(parseAreas(st.handoffAreas, HANDOFF_DEF).join('\n'))}</textarea></label>
+    <label class="f"><span>Areas for Box Now / ACS courier (one per line, Greece only)</span><textarea class="in" id="sCA" rows="8">${esc(parseAreas(st.courierAreas, COURIER_DEF).join('\n'))}</textarea></label>
+    <p class="mut sm">Customers must pick one of these before they can order or send a request. Places not on the list (other countries, far areas) simply cannot be chosen.</p>
+    <div class="h2">Box Now delivery</div>
+    <label class="check"><input type="checkbox" id="sB" ${st.boxnow ? 'checked' : ''}><span><b>Offer Box Now locker delivery</b><br><span class="mut sm">Customer pays a deposit online now (needs the payment link above). The rest is collected by Box Now COD when the parcel is in the locker.</span></span></label>
+    <label class="f"><span>Deposit is</span><select class="in" id="sDM"><option value="cost"${st.depositMode !== 'percent' ? ' selected' : ''}>What it cost you to make (from each product's cost)</option><option value="percent"${st.depositMode === 'percent' ? ' selected' : ''}>A percentage of the price</option></select></label>
+    <label class="f"><span>Percentage (used for "percentage", and for products with no cost set)</span><input class="in" id="sDP" inputmode="numeric" value="${esc(st.depositPct || 30)}"></label>
+    <label class="f"><span>Delivery fee added to the order (${esc(CFG.currency || 'EUR')}, 0 = none)</span><input class="in" id="sBF" inputmode="decimal" value="${esc(st.boxFee || 0)}"></label>
     <div class="gap"></div><button class="btn pri block" data-act="saveSettings">Save settings</button>
     <div class="h2">This phone</div>
     ${B.pushAvailable ? `<button class="btn block" data-act="pushAdmin">${B.pushEnabled('admin') ? '🔔 Alerts are on' : '🔔 Turn on alerts for new orders & messages'}</button><div class="gap-s"></div>` : ''}<button class="btn block" data-act="copyShop">🔗 Copy customer shop link</button>
@@ -445,12 +541,21 @@ document.addEventListener('click', async (e) => {
     if (a === 'editProd') openProductEditor(b.dataset.id);
     if (a === 'seed') await seedDemo();
     if (a === 'thread') openThread(b.dataset.id);
+    if (a === 'delreq') {
+      if (!confirm('Delete this request and its whole chat for good?')) return;
+      await deleteRequest(b.dataset.id); toast('Deleted');
+    }
     if (a === 'order') openOrder(b.dataset.id);
     if (a === 'ofilter') { S.ofilter = b.dataset.v; render(); }
     if (a === 'manual') openManualSale();
     if (a === 'csv') downloadCsv();
     if (a === 'logout') await B.adminLogout();
     if (a === 'wipe') { if (confirm('Delete ALL demo data in this browser?')) { Object.keys(localStorage).filter((k) => k.startsWith('gewy:')).forEach((k) => localStorage.removeItem(k)); location.reload(); } }
+    if (a === 'resetAudience') {
+      if (!confirm('Reset all audience counts to zero? Orders and products are not affected.')) return;
+      for (const d of [...S.devices]) await B.del('devices', d.id);
+      toast('Counts reset');
+    }
     if (a === 'openShop') window.open(new URL('./', location.href).href, '_blank');
     if (a === 'copyShop') { await copy(new URL('./', location.href).href); toast('Shop link copied'); }
     if (a === 'pushAdmin') {
@@ -475,8 +580,12 @@ document.addEventListener('click', async (e) => {
       if (link && !/^https:\/\//i.test(link)) return toast('The payment link must start with https://');
       await B.set('settings', 'shop', {
         shopName: $('#sN').value.trim(), about: $('#sA').value.trim(), phone: $('#sPh').value.trim(),
+        businessName: $('#sBN').value.trim(), taxId: $('#sTX').value.trim(), contactEmail: $('#sEM').value.trim(),
         payHandoff: $('#sH').checked, handoffNote: $('#sHN').value.trim(), payOnline: $('#sO').checked,
-        payLink: link, payLabel: $('#sLb').value.trim(), updatedAt: Date.now(),
+        payLink: link, payLabel: $('#sLb').value.trim(),
+        handoffAreas: $('#sHA').value.split('\n').map((x) => x.trim()).filter(Boolean).join('\n'), courierAreas: $('#sCA').value.split('\n').map((x) => x.trim()).filter(Boolean).join('\n'),
+        boxnow: $('#sB').checked, depositMode: $('#sDM').value, depositPct: Math.min(100, Math.max(5, num($('#sDP').value) || 30)), boxFee: Math.max(0, num($('#sBF').value) || 0),
+        updatedAt: Date.now(),
       });
       toast('Settings saved ✓');
     }
@@ -499,6 +608,7 @@ function startData() {
   stopData();
   const known = { orders: null, requests: null };
   S.stops.push(B.watch('products', (r) => { S.products = r; refresh(['home', 'products']); }));
+  S.stops.push(B.watch('devices', (r) => { S.devices = r; refresh(['home', 'audience']); }));
   S.stops.push(B.watchDoc('settings', 'shop', (d) => { S.settings = d || {}; refresh(['home']); }));
   S.stops.push(B.watch('orders', (r) => {
     if (known.orders) r.filter((o) => !known.orders.has(o.id) && o.source !== 'manual').forEach((o) => toast(`📦 New order ${o.no} · ${eur(o.total)}`, 6000));
@@ -517,7 +627,7 @@ function startData() {
     S.requests = r; refresh(['home', 'requests']);
     S.threadRedraw && S.threadRedraw();
   }));
-  if (B.mode === 'live') S.stops.push(B.watch('subscribers', (r) => { S.subs = r; refresh(['home', 'notify']); }));
+  if (B.mode === 'live' && B.pushAvailable) S.stops.push(B.watch('subscribers', (r) => { S.subs = r; refresh(['home', 'notify']); }));
 }
 function stopData() { S.stops.forEach((f) => f && f()); S.stops = []; }
 function refresh(views) {

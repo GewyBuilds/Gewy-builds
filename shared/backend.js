@@ -18,6 +18,8 @@ const adminCbs = new Set();
 
 /* ------------------------------------------------------------------ init */
 export async function init({ role } = {}) {
+  // On the real website the shop must never fall back to the local demo mode (it would have no real data and no real login).
+  if (LOCAL && !['localhost', '127.0.0.1', ''].includes(location.hostname)) throw new Error('config.js is missing the Firebase settings');
   if (LOCAL) {
     _uid = localStorage.getItem('gewy:uid');
     if (!_uid) {
@@ -114,6 +116,15 @@ export function watchDoc(col, id, cb) {
   );
 }
 
+// One-time read (not live).
+export async function getAll(col, { where = [] } = {}) {
+  if (LOCAL) return LS.get(col).filter((d) => match(d, where));
+  let q = FS.collection(db, col);
+  if (where.length) q = FS.query(q, ...where.map(([f, op, v]) => FS.where(f, op, v)));
+  const snap = await FS.getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
 export async function add(col, data) {
   if (LOCAL) {
     const id = rid();
@@ -182,6 +193,32 @@ export async function uploadImage(file) {
     }
   }
   return out;
+}
+
+/* ----------------------------------------------------------- audience stats */
+// One small record per customer device: when first/last seen, visit count, installed or not.
+// Called by the shop app only. Failures are ignored on purpose (stats must never break the shop).
+export async function touchDevice({ installed = false, visit = true } = {}) {
+  try {
+    const id = _uid;
+    if (!id) return;
+    const ua = navigator.userAgent || '';
+    const platform = /iPhone|iPad|iPod/i.test(ua) ? 'ios' : /Android/i.test(ua) ? 'android' : 'desktop';
+    const lang = (navigator.language || '').slice(0, 2);
+    const now = Date.now();
+    let cur = null;
+    if (LOCAL) cur = LS.get('devices').find((d) => d.id === id) || null;
+    else { const snap = await FS.getDoc(FS.doc(db, 'devices', id)); cur = snap.exists() ? snap.data() : null; }
+    if (!cur) {
+      const doc = { firstSeen: now, lastSeen: now, visits: 1, installed: !!installed, platform, lang };
+      if (installed) doc.installedAt = now;
+      await set('devices', id, doc);
+      return;
+    }
+    const upd = { lastSeen: now, visits: (cur.visits || 0) + (visit ? 1 : 0), platform, lang };
+    if (installed && !cur.installed) { upd.installed = true; upd.installedAt = now; }
+    await set('devices', id, upd);
+  } catch (e) { console.warn('stats skipped', e.code || e); }
 }
 
 /* ------------------------------------------------------------ push alerts */

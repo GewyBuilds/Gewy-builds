@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebaseapp.com; frame-src https://*.firebaseapp.com; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Gewy Builds Admin</title>
 <meta name="robots" content="noindex,nofollow">
@@ -14,9 +16,11 @@
 <link rel="apple-touch-icon" href="./icons/admin-192.png">
 <link rel="icon" href="./icons/admin-192.png">
 <link rel="stylesheet" href="./shared/ui.css">
+<script src="./shared/guard.js"></script>
 <script src="./config.js"></script>
 </head>
 <body>
+<noscript>Please turn on JavaScript.</noscript>
 <div id="app"><div class="spin"></div></div>
 <script type="module" src="./admin.js"></script>
 </body>

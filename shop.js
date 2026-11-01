@@ -1,5 +1,7 @@
 import * as B from './shared/backend.js';
-import { $, $$, esc, eur, toast, sheet, ago, copy, fillPayLink } from './shared/ui.js';
+import { termsHtml, privacyHtml } from './shared/legal.js';
+import { HANDOFF_DEF, COURIER_DEF, parseAreas } from './shared/areas.js';
+import { $, $$, esc, eur, toast, sheet, ago, copy, fillPayLink, waNumber } from './shared/ui.js';
 
 const CFG = globalThis.GEWY_CONFIG || {};
 
@@ -31,7 +33,17 @@ const DICT = {
     done: 'Done', contact: 'Contact', call: 'Call', whatsapp: 'WhatsApp',
     noOrders: 'No orders yet.',
     st_new: 'Received', st_making: 'Printing', st_ready: 'Ready', st_delivered: 'Delivered', st_cancelled: 'Cancelled',
-    paid: 'Paid', unpaid: 'Not paid yet', atHandoff: 'Pay at handoff',
+    paid: 'Paid', unpaid: 'Not paid yet', atHandoff: 'Pay at handoff', depPaid: 'Deposit paid',
+    welcomeTitle: 'Before you start', welcomeText: 'To use the shop, please read and accept our Terms and Privacy. They explain delivery areas, payments, deposits and how we handle your details.', accept: 'Accept and continue',
+    terms: 'Terms', privacy: 'Privacy', agree: 'I agree to the Terms and Privacy', agreeNeeded: 'Please tick the box to agree to the Terms and Privacy',
+    area: 'Your area', chooseArea: 'Choose your area…', areaNeeded: 'Please choose your area first',
+    areaHint: 'Delivery by me: Salamina and Athens only.', areaHintBox: 'Box Now / ACS: Greece only, from the areas in the list.',
+    reqLimit: 'You can send up to {n} custom requests per day. Please try again tomorrow.',
+    boxnow: 'Box Now / ACS courier', boxnowDesc: 'Courier or Box Now locker, anywhere in the listed areas of Greece.', boxWhere: 'Which Box Now locker? (name or area)',
+    deposit: 'Pay now (deposit)', balance: 'Pay at the locker', fee: 'Delivery fee',
+    boxExplain: 'You pay a small deposit now. The rest you pay online when your parcel arrives in the locker (Box Now sends you the link).',
+    depNote: 'Pay the deposit now. The rest is paid when the parcel arrives in the Box Now locker.',
+    balLeft: 'Left to pay at the locker',
     customTitle: 'Want something made just for you?',
     customSub: 'Describe it and add a photo if you have one. I will send you a preview of how it would look and a price. Like it? Approve and order. You pay nothing until you approve.',
     newReq: 'New custom request', noReqs: 'No custom requests yet.',
@@ -43,7 +55,8 @@ const DICT = {
     msgP: 'Write a message...', send: 'Send', quoteReady: 'Price for your item', approve: 'Approve and order',
     quoteHint: 'Not what you imagined? Just reply below and I will change it.',
     you: 'You', maker: 'Gewy Builds', details: 'Details', trust: 'Handmade on the island · hand delivery · pay when you receive it',
-    install: 'Tip: add this app to your home screen for the best experience.',
+    install: 'Install the app', installTitle: 'Install on iPhone', installDone: 'Installed!',
+    installSteps: '1. Tap the Share button at the bottom of Safari (the square with an arrow).\n2. Scroll down and tap "Add to Home Screen".\n3. Tap "Add". The Gewy Builds icon appears on your home screen.',
     err: 'Something went wrong. Please try again.', sending: 'Sending...',
   },
   el: {
@@ -72,7 +85,17 @@ const DICT = {
     done: 'Τέλος', contact: 'Επικοινωνία', call: 'Κλήση', whatsapp: 'WhatsApp',
     noOrders: 'Δεν υπάρχουν παραγγελίες ακόμα.',
     st_new: 'Παρελήφθη', st_making: 'Σε εκτύπωση', st_ready: 'Έτοιμο', st_delivered: 'Παραδόθηκε', st_cancelled: 'Ακυρώθηκε',
-    paid: 'Πληρώθηκε', unpaid: 'Απλήρωτο', atHandoff: 'Πληρωμή στην παράδοση',
+    paid: 'Πληρώθηκε', unpaid: 'Απλήρωτο', atHandoff: 'Πληρωμή στην παράδοση', depPaid: 'Η προκαταβολή πληρώθηκε',
+    welcomeTitle: 'Πριν ξεκινήσεις', welcomeText: 'Για να χρησιμοποιήσεις το κατάστημα, διάβασε και αποδέξου τους Όρους και το Απόρρητο. Εξηγούν περιοχές παράδοσης, πληρωμές, προκαταβολές και πώς χειριζόμαστε τα στοιχεία σου.', accept: 'Αποδοχή και συνέχεια',
+    terms: 'Όροι', privacy: 'Απόρρητο', agree: 'Συμφωνώ με τους Όρους και το Απόρρητο', agreeNeeded: 'Τσέκαρε το κουτί για να συμφωνήσεις με τους Όρους και το Απόρρητο',
+    area: 'Η περιοχή σου', chooseArea: 'Διάλεξε περιοχή…', areaNeeded: 'Διάλεξε πρώτα την περιοχή σου',
+    areaHint: 'Παράδοση από εμένα: μόνο Σαλαμίνα και Αθήνα.', areaHintBox: 'Box Now / ACS: μόνο Ελλάδα, από τις περιοχές της λίστας.',
+    reqLimit: 'Μπορείς να στείλεις έως {n} αιτήματα custom την ημέρα. Δοκίμασε ξανά αύριο.',
+    boxnow: 'Box Now / ACS courier', boxnowDesc: 'Κούριερ ή Box Now locker, στις περιοχές της λίστας στην Ελλάδα.', boxWhere: 'Ποιο Box Now locker; (όνομα ή περιοχή)',
+    deposit: 'Πληρώνεις τώρα (προκαταβολή)', balance: 'Πληρώνεις στο locker', fee: 'Έξοδα αποστολής',
+    boxExplain: 'Πληρώνεις τώρα μια μικρή προκαταβολή. Το υπόλοιπο το πληρώνεις online όταν το δέμα φτάσει στο locker (το Box Now σου στέλνει τον σύνδεσμο).',
+    depNote: 'Πλήρωσε την προκαταβολή τώρα. Το υπόλοιπο πληρώνεται όταν το δέμα φτάσει στο Box Now locker.',
+    balLeft: 'Υπόλοιπο στο locker',
     customTitle: 'Θες κάτι φτιαγμένο ειδικά για σένα;',
     customSub: 'Περίγραψέ το και πρόσθεσε φωτογραφία αν έχεις. Θα σου στείλω προεπισκόπηση και τιμή. Σου αρέσει; Το εγκρίνεις και παραγγέλνεις. Δεν πληρώνεις τίποτα μέχρι να εγκρίνεις.',
     newReq: 'Νέο αίτημα custom', noReqs: 'Δεν υπάρχουν αιτήματα ακόμα.',
@@ -84,7 +107,8 @@ const DICT = {
     msgP: 'Γράψε μήνυμα...', send: 'Αποστολή', quoteReady: 'Τιμή για το αντικείμενο', approve: 'Έγκριση και παραγγελία',
     quoteHint: 'Δεν είναι αυτό που φαντάστηκες; Απάντησε παρακάτω και θα το αλλάξω.',
     you: 'Εσύ', maker: 'Gewy Builds', details: 'Λεπτομέρειες', trust: 'Φτιαγμένο στο νησί · παράδοση με το χέρι · πληρώνεις όταν το παραλάβεις',
-    install: 'Συμβουλή: πρόσθεσε την εφαρμογή στην αρχική οθόνη για καλύτερη εμπειρία.',
+    install: 'Εγκατάσταση εφαρμογής', installTitle: 'Εγκατάσταση σε iPhone', installDone: 'Εγκαταστάθηκε!',
+    installSteps: '1. Πάτα το κουμπί Κοινοποίηση κάτω στο Safari (το τετράγωνο με το βέλος).\n2. Κάνε κύλιση και πάτα "Προσθήκη στην οθόνη Αφετηρίας".\n3. Πάτα "Προσθήκη". Το εικονίδιο Gewy Builds εμφανίζεται στην αρχική οθόνη σου.',
     err: 'Κάτι πήγε στραβά. Δοκίμασε ξανά.', sending: 'Αποστολή...',
   },
 };
@@ -97,7 +121,7 @@ const t = (k, vars) => {
 
 /* ------------------------------------------------------------------- state */
 const S = {
-  tab: 'shop', products: [], settings: {}, orders: [], requests: [], threadRedraw: null,
+  tab: 'shop', products: [], settings: {}, orders: [], requests: [], threadRedraw: null, installEvt: null, entered: false,
   cart: JSON.parse(localStorage.getItem('gewy:cart') || '[]'),
   loaded: { products: false },
 };
@@ -126,7 +150,7 @@ function shell() {
   const logo = `${esc(parts.join(' '))}${parts.length ? ' ' : ''}<b>${esc(last)}</b>`;
   $('#app').innerHTML = `
     <header class="top"><div class="wrap">
-      <div class="logo grow">${logo}</div>
+      <div class="logo grow"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="17" width="18" height="3" rx="1.5" fill="currentColor" opacity=".35"/><rect x="3" y="12" width="18" height="3" rx="1.5" fill="currentColor" opacity=".6"/><rect x="3" y="7" width="18" height="3" rx="1.5" fill="currentColor" opacity=".85"/><rect x="3" y="2" width="18" height="3" rx="1.5" style="fill:var(--acc)"/></svg><span>${logo}</span></div>
       <button class="iconbtn mono" data-act="lang" aria-label="Language" style="font-size:13px;font-weight:700">${lang === 'el' ? 'EN' : 'ΕΛ'}</button>
       ${B.pushAvailable ? '<button class="iconbtn" data-act="bell" aria-label="Notifications" id="bellBtn">🔔</button>' : ''}
       <button class="iconbtn" data-act="cart" aria-label="Cart">🛒<span class="dot hide" id="cartDot"></span></button>
@@ -138,7 +162,13 @@ function shell() {
       <button data-act="tab" data-tab="orders"><span class="e">📦</span>${esc(t('orders'))}</button>
     </div></nav>`;
   document.documentElement.lang = lang;
-  renderMain();
+  renderMain(true);
+}
+
+function bumpCart() {
+  const b = $('[data-act=cart]');
+  if (b) { b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
+  try { navigator.vibrate && navigator.vibrate(8); } catch { /* ignore */ }
 }
 
 function updateChrome() {
@@ -152,28 +182,41 @@ function updateChrome() {
   if (bell) bell.textContent = B.pushEnabled('shop') ? '🔔' : '🔕';
 }
 
-function renderMain() {
+function renderMain(swap) {
   const m = $('#main');
   if (!m) return;
+  if (swap) { m.classList.remove('swap'); void m.offsetWidth; m.classList.add('swap'); }
   if (S.tab === 'shop') m.innerHTML = viewShop();
   else if (S.tab === 'custom') m.innerHTML = viewCustom();
   else m.innerHTML = viewOrders();
+  m.insertAdjacentHTML('beforeend', `<div class="mut sm" style="text-align:center;margin:26px 0 8px"><button class="linkbtn" data-act="legal" data-v="terms">${esc(t('terms'))}</button> · <button class="linkbtn" data-act="legal" data-v="privacy">${esc(t('privacy'))}</button></div>`);
   updateChrome();
 }
 
 /* -------------------------------------------------------------------- shop */
+const isStandalone = () => (globalThis.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+const isIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+function installBtn() {
+  if (isStandalone()) return '';
+  if (S.installEvt) return `<button class="btn pri sm" data-act="install">⬇ ${esc(t('install'))}</button>`;
+  if (isIOS()) return `<button class="btn pri sm" data-act="iosInstall">⬇ ${esc(t('install'))}</button>`;
+  return '';
+}
+
 function viewShop() {
   const st = S.settings;
   const pushOn = B.pushEnabled('shop');
   let h = `<section class="hero"><h2>${esc(t('heroTitle'))}</h2><div class="mut">${esc(st.about || t('heroSub'))}</div>
-    ${B.pushAvailable ? '<div class="gap-s"></div>' : ''}
-    ${!B.pushAvailable ? '' : pushOn ? `<span class="chip ok">🔔 ${esc(t('notifyOn'))}</span>` : `<button class="btn pri sm" data-act="bell">🔔 ${esc(t('notifyBtn'))}</button>`}
+    ${installBtn() || B.pushAvailable ? '<div class="gap-s"></div>' : ''}
+    <div class="row" style="flex-wrap:wrap">${installBtn()}
+    ${!B.pushAvailable ? '' : pushOn ? `<span class="chip ok">🔔 ${esc(t('notifyOn'))}</span>` : `<button class="btn pri sm" data-act="bell">🔔 ${esc(t('notifyBtn'))}</button>`}</div>
   </section>`;
   if (B.mode === 'demo') h += `<div class="banner demo">🧪 <span><b>DEMO MODE</b> — data is saved only in this browser. See README to go live.</span></div>`;
   h += `<div class="gap"></div>`;
-  if (!S.loaded.products) return h + '<div class="spin"></div>';
+  if (!S.loaded.products) return h + '<div class="grid">' + '<div class="prod skel"><div class="ph"></div><div class="meta"><i></i><i class="s"></i></div></div>'.repeat(6) + '</div>';
   if (!S.products.length) return h + `<div class="empty">${esc(t('noProducts'))}</div>`;
-  h += `<div class="grid">` + S.products.map(prodCard).join('') + `</div>`;
+  const enter = !S.entered; S.entered = true;
+  h += `<div class="grid${enter ? ' enter' : ''}">` + S.products.map(prodCard).join('') + `</div>`;
   h += `<p class="mut sm" style="text-align:center;margin:22px 0 6px">${esc(t('trust'))}</p>`;
   return h;
 }
@@ -219,7 +262,7 @@ function openProduct(id) {
       const it = item();
       const ex = S.cart.find((c) => c.key === it.key);
       if (ex) ex.qty += it.qty; else S.cart.push(it);
-      saveCart(); updateChrome(); toast('✓ ' + t('added')); s.close();
+      saveCart(); updateChrome(); bumpCart(); toast('✓ ' + t('added')); s.close();
     }
     if (a === 'buy') { s.close(); openCheckout({ items: [item()] }); }
   });
@@ -253,13 +296,28 @@ function openCart() {
 }
 
 /* ---------------------------------------------------------------- checkout */
+const r2 = (n) => Math.round(n * 100) / 100;
+// Box Now: part now (your cost, or a percentage), the rest when the parcel is in the locker.
+function boxSplit(items, st) {
+  const sub = items.reduce((n, i) => n + i.price * i.qty, 0);
+  const fee = Math.max(0, +st.boxFee || 0);
+  const cost = items.reduce((n, i) => n + (i.cost || 0) * i.qty, 0);
+  const pct = Math.min(100, Math.max(5, +st.depositPct || 30));
+  let dep = st.depositMode === 'percent' || cost <= 0 ? sub * pct / 100 : cost;
+  dep = r2(Math.min(sub + fee, Math.max(1, dep)));
+  const total = r2(sub + fee);
+  return { fee, total, deposit: dep, balance: r2(total - dep) };
+}
+
 function openCheckout({ items, requestId = null, fromCart = false }) {
   const st = S.settings;
-  const total = items.reduce((n, i) => n + i.price * i.qty, 0);
+  let total = items.reduce((n, i) => n + i.price * i.qty, 0);
+  const itemsTotal = total;
   const prof = profile();
   const canOnline = st.payOnline !== false && !!st.payLink;
   const canHandoff = st.payHandoff !== false || !canOnline;
   let pay = canHandoff ? 'handoff' : 'online';
+  const boxOn = !!st.boxnow && canOnline;
   let delivery = 'deliver';
   const label = st.payLabel || 'Card / PayPal / Revolut';
 
@@ -267,17 +325,22 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
     <div class="hd"><div class="ttl">${esc(t('checkout'))}</div><button class="xbtn" data-close>✕</button></div>
     ${items.map((i) => `<div class="line">${i.image ? `<img src="${esc(i.image)}" alt="">` : '<div class="sq"></div>'}
       <div class="grow"><b>${esc(i.name)}</b><div class="mono mut sm">× ${i.qty}</div></div><b class="mono">${eur(i.price * i.qty)}</b></div>`).join('')}
-    <div class="row between" style="margin:10px 0 4px"><span class="mut">${esc(t('total'))}</span><b class="mono" style="font-size:22px">${eur(total)}</b></div>
+    <div class="row between" style="margin:10px 0 4px"><span class="mut">${esc(t('total'))}</span><b class="mono" style="font-size:22px" id="totalV">${eur(total)}</b></div>
+    <div class="card hide" id="boxSum"></div>
+    <label class="f"><span>${esc(t('area'))} *</span><select class="in" id="cArea">${areaOpts(areasFor('deliver'), prof.area)}</select></label>
+    <p class="mut sm" id="areaHint" style="margin:-6px 0 8px">${esc(t('areaHint'))}</p>
     <label class="f"><span>${esc(t('yourName'))}</span><input class="in" id="cName" autocomplete="name" value="${esc(prof.name || '')}"></label>
     <label class="f"><span>${esc(t('phone'))}</span><input class="in" id="cPhone" type="tel" autocomplete="tel" value="${esc(prof.phone || '')}" placeholder="${esc(t('phoneHint'))}"></label>
     <div class="h2">${esc(t('how'))}</div>
     <div class="opt on" data-a="dl" data-v="deliver"><i class="rd"></i><div><b>${esc(t('deliver'))}</b><span class="mut sm">${esc(t('deliverDesc'))}</span></div></div>
     <div class="opt" data-a="dl" data-v="meetup"><i class="rd"></i><div><b>${esc(t('meetup'))}</b><span class="mut sm">${esc(t('meetupDesc'))}</span></div></div>
+    ${boxOn ? `<div class="opt" data-a="dl" data-v="boxnow"><i class="rd"></i><div><b>📦 ${esc(t('boxnow'))}</b><span class="mut sm">${esc(t('boxnowDesc'))}</span></div></div>` : ''}
     <label class="f"><span id="addrL">${esc(t('address'))}</span><input class="in" id="cAddr" autocomplete="street-address" value="${esc(prof.address || '')}"></label>
     <label class="f"><span>${esc(t('note'))}</span><input class="in" id="cNote"></label>
-    <div class="h2">${esc(t('payHow'))}</div>
+    <div id="paySec"><div class="h2">${esc(t('payHow'))}</div>
     ${canHandoff ? `<div class="opt${pay === 'handoff' ? ' on' : ''}" data-a="pay" data-v="handoff"><i class="rd"></i><div><b>${esc(t('payHandoff'))}</b><span class="mut sm">${esc(st.handoffNote || t('payHandoffDesc'))}</span></div></div>` : ''}
-    ${canOnline ? `<div class="opt${pay === 'online' ? ' on' : ''}" data-a="pay" data-v="online"><i class="rd"></i><div><b>${esc(t('payOnline'))}</b><span class="mut sm">${esc(t('payOnlineDesc', { label }))}</span></div></div>` : ''}
+    ${canOnline ? `<div class="opt${pay === 'online' ? ' on' : ''}" data-a="pay" data-v="online"><i class="rd"></i><div><b>${esc(t('payOnline'))}</b><span class="mut sm">${esc(t('payOnlineDesc', { label }))}</span></div></div>` : ''}</div>
+    ${agreeBox()}
     <div class="gap"></div>
     <button class="btn pri block" data-a="place" id="placeBtn">${esc(t('placeOrder'))} · ${eur(total)}</button>
     <p class="mut sm" style="text-align:center">${esc(t('trust'))}</p>`);
@@ -289,7 +352,24 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
     if (a === 'dl') {
       delivery = b.dataset.v;
       $$('[data-a=dl]', s.el).forEach((x) => x.classList.toggle('on', x === b));
-      $('#addrL', s.el).textContent = delivery === 'deliver' ? t('address') : t('meetWhere');
+      $('#addrL', s.el).textContent = delivery === 'deliver' ? t('address') : delivery === 'boxnow' ? t('boxWhere') : t('meetWhere');
+      const box = delivery === 'boxnow';
+      const cur = $('#cArea', s.el).value;
+      $('#cArea', s.el).innerHTML = areaOpts(areasFor(delivery), cur);
+      $('#areaHint', s.el).textContent = box ? t('areaHintBox') : t('areaHint');
+      $('#paySec', s.el).classList.toggle('hide', box);
+      const sum = $('#boxSum', s.el);
+      sum.classList.toggle('hide', !box);
+      if (box) {
+        const x = boxSplit(items, st);
+        total = x.total;
+        sum.innerHTML = `${x.fee ? `<div class="row between"><span class="mut">${esc(t('fee'))}</span><b class="mono">${eur(x.fee)}</b></div>` : ''}
+          <div class="row between"><span>${esc(t('deposit'))}</span><b class="mono">${eur(x.deposit)}</b></div>
+          <div class="row between"><span>${esc(t('balance'))}</span><b class="mono">${eur(x.balance)}</b></div>
+          <p class="mut sm" style="margin:8px 0 0">${esc(t('boxExplain'))}</p>`;
+      } else total = itemsTotal;
+      $('#totalV', s.el).textContent = eur(total);
+      $('#placeBtn', s.el).textContent = `${t('placeOrder')} · ${eur(total)}`;
     }
     if (a === 'pay') {
       pay = b.dataset.v;
@@ -300,21 +380,26 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
       const phone = $('#cPhone', s.el).value.trim();
       const address = $('#cAddr', s.el).value.trim();
       const note = $('#cNote', s.el).value.trim();
+      const area = $('#cArea', s.el).value;
+      if (!area) return toast(t('areaNeeded'));
+      if (!$('#agree', s.el).checked) return toast(t('agreeNeeded'));
       if (!name || digits(phone).length < 6) return toast(t('fillRequired'));
-      if (delivery === 'deliver' && !address) return toast(t('needAddress'));
+      if (delivery !== 'meetup' && !address) return toast(t('needAddress'));
       b.disabled = true;
       try {
+        const bx = delivery === 'boxnow' ? boxSplit(items, st) : null;
         const order = {
           uid: B.uid(), no: newCode(),
           items: items.map((i) => ({ id: i.pid || null, name: i.name, price: i.price, cost: i.cost || 0, qty: i.qty, color: i.color || '', image: i.image || '' })),
-          total: Math.round(total * 100) / 100,
+          total: bx ? bx.total : Math.round(total * 100) / 100,
+          ...(bx ? { fee: bx.fee, deposit: bx.deposit, balance: bx.balance } : {}),
           costTotal: Math.round(items.reduce((n, i) => n + (i.cost || 0) * i.qty, 0) * 100) / 100,
-          customer: { name, phone, address, note },
-          delivery, payMethod: pay, payStatus: 'unpaid', status: 'new',
+          customer: { name, phone, address, note, area },
+          delivery, payMethod: bx ? 'deposit' : pay, payStatus: 'unpaid', status: 'new',
           requestId, source: 'shop', createdAt: Date.now(),
         };
         const id = await B.add('orders', order);
-        localStorage.setItem('gewy:profile', JSON.stringify({ name, phone, address }));
+        localStorage.setItem('gewy:profile', JSON.stringify({ name, phone, address, area }));
         if (requestId) {
           await B.add('messages', { requestId, ownerUid: B.uid(), from: 'customer', text: `✅ ${t('approve')} — ${order.no}`, at: Date.now() });
           await B.set('requests', requestId, { status: 'approved', updatedAt: Date.now(), lastFrom: 'customer' });
@@ -333,30 +418,33 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
 
 function payUrl(order) {
   const st = S.settings;
-  return st.payLink ? fillPayLink(st.payLink, order) : '';
+  return st.payLink ? fillPayLink(st.payLink, order.payMethod === 'deposit' ? { ...order, total: order.deposit } : order) : '';
 }
 
 function contactButtons() {
   const ph = S.settings.phone;
   if (!ph) return '';
   return `<div class="row" style="margin-top:10px"><a class="btn sm grow" href="tel:${esc(ph.replace(/[^\d+]/g, ''))}">📞 ${esc(t('call'))}</a>
-    <a class="btn sm grow" target="_blank" rel="noopener" href="https://wa.me/${digits(ph)}">💬 ${esc(t('whatsapp'))}</a></div>`;
+    <a class="btn sm grow" target="_blank" rel="noopener" href="https://wa.me/${waNumber(ph)}">💬 ${esc(t('whatsapp'))}</a></div>`;
 }
 
 function showPlaced(o) {
-  const url = o.payMethod === 'online' ? payUrl(o) : '';
+  const url = o.payMethod === 'online' || o.payMethod === 'deposit' ? payUrl(o) : '';
+  const dep = o.payMethod === 'deposit';
   const s = sheet(`
-    <div style="text-align:center;padding:10px 0 4px"><div style="font-size:44px">✅</div><div class="h1" style="margin:6px 0">${esc(t('orderPlaced'))}</div>
+    <div style="text-align:center;padding:10px 0 4px"><svg class="tick" viewBox="0 0 52 52" width="64" height="64" aria-hidden="true"><circle class="tick-c" cx="26" cy="26" r="24" fill="none" stroke="var(--ok)" stroke-width="3"/><path class="tick-p" d="M15 27l8 8 14-16" fill="none" stroke="var(--ok)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="h1" style="margin:6px 0">${esc(t('orderPlaced'))}</div>
       <div class="mut sm">${esc(t('orderNo'))}</div><div class="mono" style="font-size:26px;font-weight:800;color:var(--acc2)">${esc(o.no)}</div></div>
-    ${url ? `<div class="card" style="margin-top:12px"><div class="row between"><span class="mut">${esc(t('payAmount'))}</span><b class="mono" style="font-size:22px">${eur(o.total)}</b></div>
+    ${url ? `<div class="card" style="margin-top:12px"><div class="row between"><span class="mut">${esc(t('payAmount'))}</span><b class="mono" style="font-size:22px">${eur(dep ? o.deposit : o.total)}</b></div>
+        ${dep ? `<div class="row between" style="margin-top:6px"><span class="mut">${esc(t('balLeft'))}</span><b class="mono">${eur(o.balance)}</b></div><p class="mut sm" style="margin:8px 0 0">${esc(t('depNote'))}</p>` : ''}
         <p class="mut sm" style="margin:8px 0 12px">${esc(t('payNote'))}</p>
-        <a class="btn pri block" href="${esc(url)}" rel="noopener">💳 ${esc(t('payNow'))} · ${eur(o.total)}</a>
+        <a class="btn pri block" href="${esc(url)}" rel="noopener">💳 ${esc(t('payNow'))} · ${eur(dep ? o.deposit : o.total)}</a>
         <p class="mut sm" style="margin:10px 0 0">${esc(t('savedInOrders'))}</p></div>`
       : `<div class="card" style="margin-top:12px">${esc(t('handoffThanks'))}</div>`}
     ${contactButtons()}
     <div class="gap"></div><button class="btn block" data-close>${esc(t('done'))}</button>`);
+  try { navigator.vibrate && navigator.vibrate([12, 40, 12]); } catch { /* ignore */ }
   S.tab = 'orders';
-  renderMain();
+  renderMain(true);
   return s;
 }
 
@@ -365,14 +453,16 @@ function viewOrders() {
   const rows = [...S.orders].sort((a, b) => b.createdAt - a.createdAt);
   if (!rows.length) return `<div class="h1">${esc(t('orders'))}</div><div class="empty">${esc(t('noOrders'))}</div>`;
   return `<div class="h1">${esc(t('orders'))}</div>` + rows.map((o) => {
-    const url = o.payMethod === 'online' && o.payStatus !== 'paid' && o.status !== 'cancelled' ? payUrl(o) : '';
+    const dep = o.payMethod === 'deposit';
+    const url = (o.payMethod === 'online' ? o.payStatus !== 'paid' : dep && o.payStatus === 'unpaid') && o.status !== 'cancelled' ? payUrl(o) : '';
     return `<div class="card">
       <div class="row between"><b class="mono">${esc(o.no)}</b><span class="chip ${ORDER_CHIP[o.status] || ''}">${esc(t('st_' + o.status))}</span></div>
       <div class="mut sm">${esc(ago(o.createdAt, lang))}</div>
       <div style="margin:8px 0">${o.items.map((i) => `${esc(i.name)} × ${i.qty}`).join('<br>')}</div>
       <div class="row between"><b class="mono">${eur(o.total)}</b>
-        <span class="chip ${o.payStatus === 'paid' ? 'ok' : 'warn'}">${esc(o.payStatus === 'paid' ? t('paid') : o.payMethod === 'handoff' ? t('atHandoff') : t('unpaid'))}</span></div>
-      ${url ? `<a class="btn pri block" style="margin-top:10px" href="${esc(url)}" rel="noopener">💳 ${esc(t('payNow'))} · ${eur(o.total)}</a>` : ''}
+        <span class="chip ${o.payStatus === 'paid' ? 'ok' : 'warn'}">${esc(o.payStatus === 'paid' ? t('paid') : o.payStatus === 'deposit' ? t('depPaid') : o.payMethod === 'handoff' ? t('atHandoff') : t('unpaid'))}</span></div>
+      ${dep && o.payStatus !== 'paid' ? `<div class="mut sm" style="margin-top:4px">${esc(t('balLeft'))}: <b class="mono">${eur(o.payStatus === 'deposit' ? o.balance : o.total)}</b></div>` : ''}
+      ${url ? `<a class="btn pri block" style="margin-top:10px" href="${esc(url)}" rel="noopener">💳 ${esc(t('payNow'))} · ${eur(dep ? o.deposit : o.total)}</a>` : ''}
     </div>`;
   }).join('') + contactButtons();
 }
@@ -389,7 +479,20 @@ function viewCustom() {
       : `<div class="empty">${esc(t('noReqs'))}</div>`);
 }
 
+const areasFor = (kind) => (kind === 'boxnow' ? parseAreas(S.settings.courierAreas, COURIER_DEF) : parseAreas(S.settings.handoffAreas, HANDOFF_DEF));
+const allAreas = () => [...new Set([...areasFor('x'), ...areasFor('boxnow')])];
+const areaOpts = (list, cur) => `<option value="">${esc(t('chooseArea'))}</option>` + list.map((a) => `<option value="${esc(a)}"${a === cur ? ' selected' : ''}>${esc(a)}</option>`).join('');
+function openLegal(kind) {
+  const html = kind === 'terms' ? termsHtml(lang, S.settings) : privacyHtml(lang, S.settings);
+  sheet(`<div class="hd"><div class="ttl">${esc(t(kind))}</div><button class="xbtn" data-close>✕</button></div><div>${html}</div>
+    <div class="gap"></div><button class="btn block" data-close>${esc(t('done'))}</button>`, { full: true });
+}
+const agreeBox = () => `<label class="check"><input type="checkbox" id="agree"${localStorage.getItem('gewy:agreed') ? ' checked' : ''}><span class="sm">${esc(t('agree'))} (<button type="button" class="linkbtn" data-act="legal" data-v="terms">${esc(t('terms'))}</button> · <button type="button" class="linkbtn" data-act="legal" data-v="privacy">${esc(t('privacy'))}</button>)</span></label>`;
+const MAX_REQ_DAY = 3;
+const reqToday = () => S.requests.filter((r) => (r.createdAt || 0) > Date.now() - 86400000).length;
+
 function openNewRequest() {
+  if (reqToday() >= MAX_REQ_DAY) return toast(t('reqLimit', { n: MAX_REQ_DAY }), 4500);
   const prof = profile();
   const files = [];
   const s = sheet(`
@@ -397,11 +500,13 @@ function openNewRequest() {
     <label class="f"><span>${esc(t('reqTitle'))}</span><input class="in" id="rT" placeholder="${esc(t('reqTitleP'))}"></label>
     <label class="f"><span>${esc(t('reqDesc'))}</span><textarea class="in" id="rD" placeholder="${esc(t('reqDescP'))}"></textarea></label>
     <label class="f"><span>${esc(t('reqBudget'))}</span><input class="in" id="rB"></label>
+    <label class="f"><span>${esc(t('area'))} *</span><select class="in" id="rArea">${areaOpts(allAreas(), prof.area)}</select></label>
     <div class="h2">${esc(t('reqPhoto'))}</div>
     <div class="thumbs" id="rTh"><button class="addimg" data-a="pick">＋</button></div>
     <input type="file" id="rF" accept="image/*" multiple class="hide">
     <label class="f"><span>${esc(t('yourName'))}</span><input class="in" id="rN" value="${esc(prof.name || '')}"></label>
     <label class="f"><span>${esc(t('phone'))}</span><input class="in" id="rP" type="tel" value="${esc(prof.phone || '')}"></label>
+    ${agreeBox()}
     <div class="gap"></div><button class="btn pri block" data-a="send">${esc(t('sendReq'))}</button>`);
   const drawThumbs = () => {
     $('#rTh', s.el).innerHTML = files.map((f, i) => `<div class="thumb"><img src="${URL.createObjectURL(f)}" alt=""><button data-a="x" data-i="${i}">✕</button></div>`).join('') +
@@ -418,15 +523,19 @@ function openNewRequest() {
       const desc = $('#rD', s.el).value.trim();
       const name = $('#rN', s.el).value.trim();
       const phone = $('#rP', s.el).value.trim();
+      if (reqToday() >= MAX_REQ_DAY) return toast(t('reqLimit', { n: MAX_REQ_DAY }), 4500);
       if (!title || !desc) return toast(t('reqTitle'));
+      const area = $('#rArea', s.el).value;
+      if (!area) return toast(t('areaNeeded'));
+      if (!$('#agree', s.el).checked) return toast(t('agreeNeeded'));
       if (!name || digits(phone).length < 6) return toast(t('fillRequired'));
       b.disabled = true; b.textContent = t('sending');
       try {
         const refImages = [];
         for (const f of files) refImages.push(await B.uploadImage(f, 'requests/' + B.uid()));
         const now = Date.now();
-        const id = await B.add('requests', { ownerUid: B.uid(), name, phone, title, desc, budget: $('#rB', s.el).value.trim(), refImages, status: 'new', quote: null, createdAt: now, updatedAt: now, lastFrom: 'customer' });
-        localStorage.setItem('gewy:profile', JSON.stringify({ ...prof, name, phone }));
+        const id = await B.add('requests', { ownerUid: B.uid(), name, phone, area, title, desc, budget: $('#rB', s.el).value.trim(), refImages, status: 'new', quote: null, createdAt: now, updatedAt: now, lastFrom: 'customer' });
+        localStorage.setItem('gewy:profile', JSON.stringify({ ...prof, name, phone, area }));
         localStorage.setItem(seenKey(id), String(now));
         s.close(); toast('✓ ' + t('sent'));
         openThread(id);
@@ -510,6 +619,16 @@ async function bell() {
   renderMain();
 }
 
+async function installApp() {
+  const ev = S.installEvt;
+  if (!ev) return;
+  try { ev.prompt(); await ev.userChoice; } catch { /* ignore */ }
+  S.installEvt = null;
+  renderMain();
+}
+globalThis.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.installEvt = e; if (S.tab === 'shop') renderMain(); });
+globalThis.addEventListener('appinstalled', () => { S.installEvt = null; toast('✓ ' + t('installDone')); B.touchDevice({ installed: true, visit: false }); renderMain(); });
+
 /* ------------------------------------------------------------------ events */
 document.addEventListener('click', (e) => {
   const z = e.target.closest('img[data-zoom]');
@@ -517,19 +636,40 @@ document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-act]');
   if (!b) return;
   const a = b.dataset.act;
-  if (a === 'tab') { S.tab = b.dataset.tab; renderMain(); scrollTo(0, 0); }
+  if (a === 'tab') { S.tab = b.dataset.tab; renderMain(true); scrollTo(0, 0); }
   if (a === 'open') openProduct(b.dataset.id);
   if (a === 'cart') openCart();
   if (a === 'bell') bell();
+  if (a === 'install') installApp();
+  if (a === 'iosInstall') sheet(`<div class="hd"><div class="ttl">${esc(t('installTitle'))}</div><button class="xbtn" data-close>✕</button></div><p style="white-space:pre-wrap">${esc(t('installSteps'))}</p><button class="btn block" data-close>OK</button>`);
   if (a === 'lang') { lang = lang === 'el' ? 'en' : 'el'; localStorage.setItem('gewy:lang', lang); shell(); }
   if (a === 'newreq') openNewRequest();
+  if (a === 'legal') openLegal(b.dataset.v);
   if (a === 'thread') openThread(b.dataset.id);
 });
 globalThis.addEventListener('gewy:push', (e) => toast('🔔 ' + [e.detail.title, e.detail.body].filter(Boolean).join(' — '), 6000));
 
+/* ----------------------------------------------------------------- first-open consent */
+function askConsent() {
+  if (localStorage.getItem('gewy:agreed')) return;
+  const s = sheet(`<div style="text-align:center;font-size:34px">📜</div>
+    <div class="h1" style="text-align:center;margin:6px 0">${esc(t('welcomeTitle'))}</div>
+    <p class="mut" style="text-align:center;line-height:1.5">${esc(t('welcomeText'))}</p>
+    <div class="row" style="justify-content:center;gap:16px;margin:8px 0 14px"><button class="linkbtn" data-act="legal" data-v="terms">${esc(t('terms'))}</button><button class="linkbtn" data-act="legal" data-v="privacy">${esc(t('privacy'))}</button></div>
+    <button class="btn pri block" data-a="ok">${esc(t('accept'))}</button>
+    <div class="gap-s"></div><button class="btn ghost block sm" data-a="lang">${lang === 'el' ? 'English' : 'Ελληνικά'}</button>`, { locked: true });
+  s.el.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-a]');
+    if (!b) return;
+    if (b.dataset.a === 'ok') { try { localStorage.setItem('gewy:agreed', String(Date.now())); } catch { /* ignore */ } s.close(); }
+    if (b.dataset.a === 'lang') { lang = lang === 'el' ? 'en' : 'el'; localStorage.setItem('gewy:lang', lang); s.close(); setTimeout(() => { shell(); askConsent(); }, 200); }
+  });
+}
+
 /* -------------------------------------------------------------------- boot */
 (async function boot() {
   shell();
+  askConsent();
   try {
     await B.init({ role: 'shop' });
   } catch (err) {
@@ -557,5 +697,8 @@ globalThis.addEventListener('gewy:push', (e) => toast('🔔 ' + [e.detail.title,
     });
   }
   if (B.pushAvailable) B.enablePush('shop', { silent: true });
-  
+  // Audience stats: count this visit once per session (and note if it was opened from the home-screen icon).
+  let counted = false;
+  try { counted = !!sessionStorage.getItem('gewy:counted'); sessionStorage.setItem('gewy:counted', '1'); } catch { /* ignore */ }
+  if (!counted) B.touchDevice({ installed: isStandalone(), visit: true });
 })();
