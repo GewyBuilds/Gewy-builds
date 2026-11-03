@@ -14,5 +14,7 @@ globalThis.GEWY_CONFIG = {
     messagingSenderId: "452232123435",
     appId: "1:452232123435:web:90da259e27c75c0165066e"
   },
+  // Bot protection: paste your reCAPTCHA v3 site key here after you set up App Check (see README). Empty = off.
+  appCheckKey: '',
   vapidKey: ''
 };

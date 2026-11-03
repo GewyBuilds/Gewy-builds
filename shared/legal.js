@@ -23,6 +23,9 @@ export function termsHtml(lang, st) {
     + sec('Μη παραλαβή', 'Αν δεν παραλάβεις δέμα που έχει αποσταλεί, η προκαταβολή μπορεί να χρησιμοποιηθεί για την κάλυψη του κόστους παραγωγής και αποστολής.')
     + sec('Ελαττώματα', 'Αν το προϊόν έχει ελάττωμα ή φτάσει χαλασμένο, στείλε μας φωτογραφία και θα το αντικαταστήσουμε ή θα σου επιστρέψουμε τα χρήματα.')
     + sec('Φωτογραφίες και χρώματα', 'Τα χρώματα και η λεπτομέρεια μπορεί να διαφέρουν ελαφρά από τις φωτογραφίες. Οι εικόνες-ιδέες είναι ενδεικτικές.')
+    + sec('Πνευματικά δικαιώματα', 'Όταν στέλνεις σχέδιο, φωτογραφία ή ιδέα για εκτύπωση, δηλώνεις ότι είναι δική σου ή ότι έχεις άδεια να τη χρησιμοποιήσεις. Δεν εκτυπώνουμε προστατευμένους χαρακτήρες, λογότυπα ή σχέδια τρίτων χωρίς άδεια, και μπορούμε να αρνηθούμε ή να αφαιρέσουμε οποιοδήποτε αίτημα ή περιεχόμενο που παραβιάζει δικαιώματα. Ευθύνεσαι για το υλικό που ανεβάζεις.')
+    + sec('Αναφορά παραβίασης', 'Αν πιστεύεις ότι κάποιο περιεχόμενο ή προϊόν παραβιάζει τα δικαιώματά σου, γράψε μας (δες Επικοινωνία) με το τι είναι, πού το είδες και ότι είσαι ο δικαιούχος. Θα το εξετάσουμε και θα το αφαιρέσουμε χωρίς καθυστέρηση, όπου χρειάζεται.')
+    + sec('Χρήση της εφαρμογής', 'Μπορείς να χρησιμοποιείς την εφαρμογή για να δεις και να παραγγείλεις. Δεν επιτρέπεται να την αντιγράψεις, να την μεταπωλήσεις, να την παρακάμψεις ή να επιτεθείς στην ασφάλειά της ή να στέλνεις spam. Το περιεχόμενο και ο κώδικας ανήκουν στο κατάστημα. Η εφαρμογή παρέχεται «ως έχει» και, στο μέτρο που επιτρέπει ο νόμος, δεν ευθυνόμαστε για διακοπές της υπηρεσίας.')
     + sec('Επικοινωνία', who(st, true));
   return sec('Who we are', who(st, false), 'We sell 3D-printed items and make custom prints to order.')
     + sec('Orders and prices', 'Prices are in euros. An order is confirmed once we check availability and, where needed, receive your payment or deposit.')
@@ -33,6 +36,9 @@ export function termsHtml(lang, st) {
     + sec('Not collected', 'If you do not collect a parcel that was shipped, the deposit may be kept to cover the cost of making and shipping it.')
     + sec('Faults', 'If an item is faulty or arrives damaged, send us a photo and we will replace it or refund you.')
     + sec('Photos and colors', 'Colors and fine detail can differ slightly from the photos. Idea pictures are only a guide.')
+    + sec('Copyright', 'When you send a design, picture or idea to print, you confirm it is yours or that you have permission to use it. We do not print protected characters, logos or designs by others without permission, and we may refuse or remove any request or content that infringes rights. You are responsible for what you upload.')
+    + sec('Reporting a copyright problem', 'If you believe something here infringes your rights, contact us (see Contact) and tell us what it is, where you saw it and that you are the rights holder. We will review it and remove it promptly where needed.')
+    + sec('Using the app', 'You may use the app to browse and order. You may not copy it, resell it, get around it, attack its security or send spam. The content and code belong to the shop. The app is provided as is and, as far as the law allows, we are not liable for interruptions of the service.')
     + sec('Contact', who(st, false));
 }
 

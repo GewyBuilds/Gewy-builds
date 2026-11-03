@@ -1,7 +1,9 @@
 import * as B from './shared/backend.js';
 import { termsHtml, privacyHtml } from './shared/legal.js';
+import { startWelcome, greeting, welcomeBack } from './shared/welcome.js';
+import { cacheGet, cacheSet } from './shared/cache.js';
 import { HANDOFF_DEF, COURIER_DEF, parseAreas } from './shared/areas.js';
-import { $, $$, esc, eur, toast, sheet, ago, copy, fillPayLink, waNumber } from './shared/ui.js';
+import { $, $$, esc, eur, toast, sheet, ago, copy, fillPayLink, waNumber, getTheme, setTheme, themeIcon } from './shared/ui.js';
 
 const CFG = globalThis.GEWY_CONFIG || {};
 
@@ -34,8 +36,11 @@ const DICT = {
     noOrders: 'No orders yet.',
     st_new: 'Received', st_making: 'Printing', st_ready: 'Ready', st_delivered: 'Delivered', st_cancelled: 'Cancelled',
     paid: 'Paid', unpaid: 'Not paid yet', atHandoff: 'Pay at handoff', depPaid: 'Deposit paid',
+    busyTitle: 'The shop is very busy right now', busyText: 'This could not be sent. Send it to me on WhatsApp instead and I will take care of it.', busyWA: 'Send on WhatsApp', busyCopy: 'Copy the message',
+    busyShop: 'The shop is very busy right now. Please try again in a little while, or message me on WhatsApp.',
     welcomeTitle: 'Before you start', welcomeText: 'To use the shop, please read and accept our Terms and Privacy. They explain delivery areas, payments, deposits and how we handle your details.', accept: 'Accept and continue',
     terms: 'Terms', privacy: 'Privacy', agree: 'I agree to the Terms and Privacy', agreeNeeded: 'Please tick the box to agree to the Terms and Privacy',
+    ownIt: 'I own this design or picture, or I have permission to use it. I understand you may refuse or remove anything that infringes copyright.', ownNeeded: 'Please confirm you own the design or have permission to use it',
     area: 'Your area', chooseArea: 'Choose your area…', areaNeeded: 'Please choose your area first',
     areaHint: 'Delivery by me: Salamina and Athens only.', areaHintBox: 'Box Now / ACS: Greece only, from the areas in the list.',
     reqLimit: 'You can send up to {n} custom requests per day. Please try again tomorrow.',
@@ -86,8 +91,11 @@ const DICT = {
     noOrders: 'Δεν υπάρχουν παραγγελίες ακόμα.',
     st_new: 'Παρελήφθη', st_making: 'Σε εκτύπωση', st_ready: 'Έτοιμο', st_delivered: 'Παραδόθηκε', st_cancelled: 'Ακυρώθηκε',
     paid: 'Πληρώθηκε', unpaid: 'Απλήρωτο', atHandoff: 'Πληρωμή στην παράδοση', depPaid: 'Η προκαταβολή πληρώθηκε',
+    busyTitle: 'Το κατάστημα έχει πολλή κίνηση τώρα', busyText: 'Δεν στάλθηκε. Στείλε το μου στο WhatsApp και θα το αναλάβω.', busyWA: 'Αποστολή στο WhatsApp', busyCopy: 'Αντιγραφή μηνύματος',
+    busyShop: 'Το κατάστημα έχει πολλή κίνηση τώρα. Δοκίμασε ξανά σε λίγο ή στείλε μου μήνυμα στο WhatsApp.',
     welcomeTitle: 'Πριν ξεκινήσεις', welcomeText: 'Για να χρησιμοποιήσεις το κατάστημα, διάβασε και αποδέξου τους Όρους και το Απόρρητο. Εξηγούν περιοχές παράδοσης, πληρωμές, προκαταβολές και πώς χειριζόμαστε τα στοιχεία σου.', accept: 'Αποδοχή και συνέχεια',
     terms: 'Όροι', privacy: 'Απόρρητο', agree: 'Συμφωνώ με τους Όρους και το Απόρρητο', agreeNeeded: 'Τσέκαρε το κουτί για να συμφωνήσεις με τους Όρους και το Απόρρητο',
+    ownIt: 'Το σχέδιο ή η φωτογραφία είναι δική μου ή έχω άδεια να τη χρησιμοποιήσω. Καταλαβαίνω ότι μπορείτε να αρνηθείτε ή να αφαιρέσετε ό,τι παραβιάζει πνευματικά δικαιώματα.', ownNeeded: 'Επιβεβαίωσε ότι το σχέδιο είναι δικό σου ή έχεις άδεια χρήσης',
     area: 'Η περιοχή σου', chooseArea: 'Διάλεξε περιοχή…', areaNeeded: 'Διάλεξε πρώτα την περιοχή σου',
     areaHint: 'Παράδοση από εμένα: μόνο Σαλαμίνα και Αθήνα.', areaHintBox: 'Box Now / ACS: μόνο Ελλάδα, από τις περιοχές της λίστας.',
     reqLimit: 'Μπορείς να στείλεις έως {n} αιτήματα custom την ημέρα. Δοκίμασε ξανά αύριο.',
@@ -151,6 +159,7 @@ function shell() {
   $('#app').innerHTML = `
     <header class="top"><div class="wrap">
       <div class="logo grow"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="17" width="18" height="3" rx="1.5" fill="currentColor" opacity=".35"/><rect x="3" y="12" width="18" height="3" rx="1.5" fill="currentColor" opacity=".6"/><rect x="3" y="7" width="18" height="3" rx="1.5" fill="currentColor" opacity=".85"/><rect x="3" y="2" width="18" height="3" rx="1.5" style="fill:var(--acc)"/></svg><span>${logo}</span></div>
+      <button class="iconbtn" data-act="theme" id="themeBtn" aria-label="Light or dark">${themeIcon()}</button>
       <button class="iconbtn mono" data-act="lang" aria-label="Language" style="font-size:13px;font-weight:700">${lang === 'el' ? 'EN' : 'ΕΛ'}</button>
       ${B.pushAvailable ? '<button class="iconbtn" data-act="bell" aria-label="Notifications" id="bellBtn">🔔</button>' : ''}
       <button class="iconbtn" data-act="cart" aria-label="Cart">🛒<span class="dot hide" id="cartDot"></span></button>
@@ -185,6 +194,7 @@ function updateChrome() {
 function renderMain(swap) {
   const m = $('#main');
   if (!m) return;
+  document.body.dataset.bg = S.tab === 'shop' ? 'shop' : S.tab === 'custom' ? 'custom' : 'orders';
   if (swap) { m.classList.remove('swap'); void m.offsetWidth; m.classList.add('swap'); }
   if (S.tab === 'shop') m.innerHTML = viewShop();
   else if (S.tab === 'custom') m.innerHTML = viewCustom();
@@ -206,7 +216,9 @@ function installBtn() {
 function viewShop() {
   const st = S.settings;
   const pushOn = B.pushEnabled('shop');
-  let h = `<section class="hero"><h2>${esc(t('heroTitle'))}</h2><div class="mut">${esc(st.about || t('heroSub'))}</div>
+  const nm = (profile().name || '').trim();
+  let h = nm ? `<button class="hello" data-act="rename"><span class="wave">👋</span><span>${esc(greeting(lang, ''))}, <b>${esc(nm)}</b></span></button>` : '';
+  h += `<section class="hero"><h2>${esc(t('heroTitle'))}</h2><div class="mut">${esc(st.about || t('heroSub'))}</div>
     ${installBtn() || B.pushAvailable ? '<div class="gap-s"></div>' : ''}
     <div class="row" style="flex-wrap:wrap">${installBtn()}
     ${!B.pushAvailable ? '' : pushOn ? `<span class="chip ok">🔔 ${esc(t('notifyOn'))}</span>` : `<button class="btn pri sm" data-act="bell">🔔 ${esc(t('notifyBtn'))}</button>`}</div>
@@ -214,6 +226,7 @@ function viewShop() {
   if (B.mode === 'demo') h += `<div class="banner demo">🧪 <span><b>DEMO MODE</b> — data is saved only in this browser. See README to go live.</span></div>`;
   h += `<div class="gap"></div>`;
   if (!S.loaded.products) return h + '<div class="grid">' + '<div class="prod skel"><div class="ph"></div><div class="meta"><i></i><i class="s"></i></div></div>'.repeat(6) + '</div>';
+  if (S.busy && !S.products.length) return h + `<div class="card">${esc(t('busyShop'))}</div>${contactButtons()}`;
   if (!S.products.length) return h + `<div class="empty">${esc(t('noProducts'))}</div>`;
   const enter = !S.entered; S.entered = true;
   h += `<div class="grid${enter ? ' enter' : ''}">` + S.products.map(prodCard).join('') + `</div>`;
@@ -233,6 +246,7 @@ function prodCard(p) {
 function openProduct(id) {
   const p = S.products.find((x) => x.id === id);
   if (!p) return;
+  B.bumpStage(1);
   let qty = 1;
   let color = p.colors && p.colors.length ? p.colors[0] : '';
   const imgs = p.images || [];
@@ -259,12 +273,13 @@ function openProduct(id) {
     }
     $('#q', s.el).textContent = qty;
     if (a === 'add') {
+      B.bumpStage(2);
       const it = item();
       const ex = S.cart.find((c) => c.key === it.key);
       if (ex) ex.qty += it.qty; else S.cart.push(it);
       saveCart(); updateChrome(); bumpCart(); toast('✓ ' + t('added')); s.close();
     }
-    if (a === 'buy') { s.close(); openCheckout({ items: [item()] }); }
+    if (a === 'buy') { B.bumpStage(2); s.close(); openCheckout({ items: [item()] }); }
   });
 }
 
@@ -310,6 +325,7 @@ function boxSplit(items, st) {
 }
 
 function openCheckout({ items, requestId = null, fromCart = false }) {
+  B.bumpStage(3);
   const st = S.settings;
   let total = items.reduce((n, i) => n + i.price * i.qty, 0);
   const itemsTotal = total;
@@ -405,12 +421,16 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
           await B.set('requests', requestId, { status: 'approved', updatedAt: Date.now(), lastFrom: 'customer' });
         }
         if (fromCart) { S.cart = []; saveCart(); updateChrome(); }
+        B.bumpStage(4);
         s.close();
         showPlaced({ ...order, id });
       } catch (err) {
         console.error(err);
-        toast(t('err'));
         b.disabled = false;
+        if (isBusyErr(err)) {
+          s.close();
+          openBusy(`Order: ${items.map((i) => `${i.name} x${i.qty}`).join(', ')}\nTotal: ${eur(total)}\n${name} · ${phone}\n${area}${address ? ' · ' + address : ''}`);
+        } else toast(t('err'));
       }
     }
   });
@@ -487,7 +507,10 @@ function openLegal(kind) {
   sheet(`<div class="hd"><div class="ttl">${esc(t(kind))}</div><button class="xbtn" data-close>✕</button></div><div>${html}</div>
     <div class="gap"></div><button class="btn block" data-close>${esc(t('done'))}</button>`, { full: true });
 }
-const agreeBox = () => `<label class="check"><input type="checkbox" id="agree"${localStorage.getItem('gewy:agreed') ? ' checked' : ''}><span class="sm">${esc(t('agree'))} (<button type="button" class="linkbtn" data-act="legal" data-v="terms">${esc(t('terms'))}</button> · <button type="button" class="linkbtn" data-act="legal" data-v="privacy">${esc(t('privacy'))}</button>)</span></label>`;
+const TERMS_V = '2';
+const hasAgreed = () => !!localStorage.getItem('gewy:agreed') && localStorage.getItem('gewy:termsv') === TERMS_V;
+const ownBox = () => `<label class="check"><input type="checkbox" id="own"><span class="sm">${esc(t('ownIt'))}</span></label>`;
+const agreeBox = () => `<label class="check"><input type="checkbox" id="agree"${hasAgreed() ? ' checked' : ''}><span class="sm">${esc(t('agree'))} (<button type="button" class="linkbtn" data-act="legal" data-v="terms">${esc(t('terms'))}</button> · <button type="button" class="linkbtn" data-act="legal" data-v="privacy">${esc(t('privacy'))}</button>)</span></label>`;
 const MAX_REQ_DAY = 3;
 const reqToday = () => S.requests.filter((r) => (r.createdAt || 0) > Date.now() - 86400000).length;
 
@@ -506,6 +529,7 @@ function openNewRequest() {
     <input type="file" id="rF" accept="image/*" multiple class="hide">
     <label class="f"><span>${esc(t('yourName'))}</span><input class="in" id="rN" value="${esc(prof.name || '')}"></label>
     <label class="f"><span>${esc(t('phone'))}</span><input class="in" id="rP" type="tel" value="${esc(prof.phone || '')}"></label>
+    ${ownBox()}
     ${agreeBox()}
     <div class="gap"></div><button class="btn pri block" data-a="send">${esc(t('sendReq'))}</button>`);
   const drawThumbs = () => {
@@ -527,6 +551,7 @@ function openNewRequest() {
       if (!title || !desc) return toast(t('reqTitle'));
       const area = $('#rArea', s.el).value;
       if (!area) return toast(t('areaNeeded'));
+      if (!$('#own', s.el).checked) return toast(t('ownNeeded'));
       if (!$('#agree', s.el).checked) return toast(t('agreeNeeded'));
       if (!name || digits(phone).length < 6) return toast(t('fillRequired'));
       b.disabled = true; b.textContent = t('sending');
@@ -537,9 +562,13 @@ function openNewRequest() {
         const id = await B.add('requests', { ownerUid: B.uid(), name, phone, area, title, desc, budget: $('#rB', s.el).value.trim(), refImages, status: 'new', quote: null, createdAt: now, updatedAt: now, lastFrom: 'customer' });
         localStorage.setItem('gewy:profile', JSON.stringify({ ...prof, name, phone, area }));
         localStorage.setItem(seenKey(id), String(now));
+        B.bumpStage(4);
         s.close(); toast('✓ ' + t('sent'));
         openThread(id);
-      } catch (err) { console.error(err); toast(t('err')); b.disabled = false; b.textContent = t('sendReq'); }
+      } catch (err) {
+        console.error(err); b.disabled = false; b.textContent = t('sendReq');
+        if (isBusyErr(err)) { s.close(); openBusy(`Custom request: ${title}\n${desc}\n${name} · ${phone}\n${area}`); } else toast(t('err'));
+      }
     }
   });
 }
@@ -645,31 +674,78 @@ document.addEventListener('click', (e) => {
   if (a === 'lang') { lang = lang === 'el' ? 'en' : 'el'; localStorage.setItem('gewy:lang', lang); shell(); }
   if (a === 'newreq') openNewRequest();
   if (a === 'legal') openLegal(b.dataset.v);
+  if (a === 'rename') startOnboarding(['name']);
+  if (a === 'theme') { setTheme(getTheme() === 'light' ? 'dark' : 'light'); b.textContent = themeIcon(); }
   if (a === 'thread') openThread(b.dataset.id);
 });
 globalThis.addEventListener('gewy:push', (e) => toast('🔔 ' + [e.detail.title, e.detail.body].filter(Boolean).join(' — '), 6000));
 
-/* ----------------------------------------------------------------- first-open consent */
-function askConsent() {
-  if (localStorage.getItem('gewy:agreed')) return;
-  const s = sheet(`<div style="text-align:center;font-size:34px">📜</div>
-    <div class="h1" style="text-align:center;margin:6px 0">${esc(t('welcomeTitle'))}</div>
-    <p class="mut" style="text-align:center;line-height:1.5">${esc(t('welcomeText'))}</p>
-    <div class="row" style="justify-content:center;gap:16px;margin:8px 0 14px"><button class="linkbtn" data-act="legal" data-v="terms">${esc(t('terms'))}</button><button class="linkbtn" data-act="legal" data-v="privacy">${esc(t('privacy'))}</button></div>
-    <button class="btn pri block" data-a="ok">${esc(t('accept'))}</button>
-    <div class="gap-s"></div><button class="btn ghost block sm" data-a="lang">${lang === 'el' ? 'English' : 'Ελληνικά'}</button>`, { locked: true });
-  s.el.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-a]');
-    if (!b) return;
-    if (b.dataset.a === 'ok') { try { localStorage.setItem('gewy:agreed', String(Date.now())); } catch { /* ignore */ } s.close(); }
-    if (b.dataset.a === 'lang') { lang = lang === 'el' ? 'en' : 'el'; localStorage.setItem('gewy:lang', lang); s.close(); setTimeout(() => { shell(); askConsent(); }, 200); }
+/* ------------------------------------------------------------ welcome (first open) */
+const todayKey = () => new Date().toISOString().slice(0, 10);
+function startOnboarding(only) {
+  const prof = profile();
+  const steps = only || [...(localStorage.getItem('gewy:ob') ? [] : ['name', 'src']), ...(hasAgreed() ? [] : ['consent'])];
+  if (!steps.length) return false;
+  startWelcome({
+    steps, name: prof.name || '', getLang: () => lang, openLegal,
+    setLang: (l) => { lang = l; localStorage.setItem('gewy:lang', l); shell(); },
+    onFinish: ({ name, src }) => {
+      try {
+        if (steps.includes('consent')) { localStorage.setItem('gewy:agreed', String(Date.now())); localStorage.setItem('gewy:termsv', TERMS_V); }
+        if (steps.includes('name') || steps.includes('src')) localStorage.setItem('gewy:ob', '1');
+        if (name && name.trim()) localStorage.setItem('gewy:profile', JSON.stringify({ ...profile(), name: name.trim() }));
+        if (src) { localStorage.setItem('gewy:src', src); B.touchDevice({ visit: false, src }); }
+        localStorage.setItem('gewy:hello', todayKey());
+      } catch { /* ignore */ }
+      renderMain(true);
+    },
   });
+  return true;
+}
+function dailyHello() {
+  const nm = (profile().name || '').trim();
+  if (!nm || localStorage.getItem('gewy:hello') === todayKey()) return;
+  try { localStorage.setItem('gewy:hello', todayKey()); } catch { /* ignore */ }
+  setTimeout(() => toast(welcomeBack(lang, nm), 3600), 600);
+}
+
+/* ------------------------------------------------------ busy / saved catalogue */
+const isBusyErr = (e) => ['resource-exhausted', 'unavailable', 'deadline-exceeded'].includes(e && e.code);
+function openBusy(message) {
+  const ph = S.settings.phone;
+  const s = sheet(`<div class="hd"><div class="ttl">${esc(t('busyTitle'))}</div><button class="xbtn" data-close>✕</button></div>
+    <p class="mut">${esc(t('busyText'))}</p>
+    <div class="card sm" style="white-space:pre-wrap">${esc(message)}</div><div class="gap-s"></div>
+    ${ph ? `<a class="btn pri block" target="_blank" rel="noopener" href="https://wa.me/${waNumber(ph)}?text=${encodeURIComponent(message)}">💬 ${esc(t('busyWA'))}</a><div class="gap-s"></div>` : ''}
+    <button class="btn block" data-a="copy">${esc(t('busyCopy'))}</button>`);
+  s.el.addEventListener('click', (e) => { if (e.target.closest('[data-a=copy]')) { copy(message); toast('✓'); } });
+}
+const CAT_TTL = 10 * 60 * 1000;
+async function loadCatalog(force) {
+  const apply = (c) => {
+    S.products = (c.products || []).filter((p) => p.published !== false).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    S.settings = c.settings || {};
+    S.loaded.products = true;
+    if (S.tab === 'shop') renderMain();
+  };
+  const cached = await cacheGet('catalog');
+  if (cached) { S.catAt = cached.at; apply(cached); if (!force && Date.now() - cached.at < CAT_TTL) return; }
+  try {
+    const [products, settings] = await Promise.all([B.getAll('products'), B.getOne('settings', 'shop')]);
+    const c = { at: Date.now(), products, settings: settings || {} };
+    S.catAt = c.at; S.busy = false;
+    cacheSet('catalog', c);
+    apply(c);
+  } catch (err) {
+    console.warn('catalog load failed', err.code || err);
+    if (!cached) { S.loaded.products = true; S.busy = true; if (S.tab === 'shop') renderMain(); }
+  }
 }
 
 /* -------------------------------------------------------------------- boot */
 (async function boot() {
   shell();
-  askConsent();
+  if (!startOnboarding()) dailyHello();
   try {
     await B.init({ role: 'shop' });
   } catch (err) {
@@ -678,12 +754,18 @@ function askConsent() {
     return;
   }
   const me = B.uid();
-  B.watch('products', (rows) => {
-    S.loaded.products = true;
-    S.products = rows.filter((p) => p.published !== false).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    if (S.tab === 'shop') renderMain();
-  });
-  B.watchDoc('settings', 'shop', (d) => { S.settings = d || {}; if (S.tab === 'shop') renderMain(); });
+  if (B.mode === 'demo') {
+    B.watch('products', (rows) => {
+      S.loaded.products = true;
+      S.products = rows.filter((p) => p.published !== false).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      if (S.tab === 'shop') renderMain();
+    });
+    B.watchDoc('settings', 'shop', (d) => { S.settings = d || {}; if (S.tab === 'shop') renderMain(); });
+  } else {
+    loadCatalog();
+    // Coming back to the app after a while: refresh the saved copy.
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - (S.catAt || 0) > CAT_TTL) loadCatalog(true); });
+  }
   B.watch('orders', (rows) => { S.orders = rows; if (S.tab === 'orders') renderMain(); }, { where: [['uid', '==', me]] });
   B.watch('requests', (rows) => { S.requests = rows; if (S.tab === 'custom') renderMain(); updateChrome(); if (S.threadRedraw) S.threadRedraw(); }, { where: [['ownerUid', '==', me]] });
   if (B.mode === 'demo') {
@@ -700,5 +782,11 @@ function askConsent() {
   // Audience stats: count this visit once per session (and note if it was opened from the home-screen icon).
   let counted = false;
   try { counted = !!sessionStorage.getItem('gewy:counted'); sessionStorage.setItem('gewy:counted', '1'); } catch { /* ignore */ }
-  if (!counted) B.touchDevice({ installed: isStandalone(), visit: true });
+  let link = '';
+  try {
+    link = (new URLSearchParams(location.search).get('src') || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 30);
+    if (link && !localStorage.getItem('gewy:link')) localStorage.setItem('gewy:link', link);
+    link = localStorage.getItem('gewy:link') || '';
+  } catch { /* ignore */ }
+  if (!counted) B.touchDevice({ installed: isStandalone(), visit: true, src: localStorage.getItem('gewy:src') || '', link });
 })();

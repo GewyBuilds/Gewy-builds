@@ -36,6 +36,13 @@ export async function init({ role } = {}) {
   AU = a; FS = f;
   // One Firebase "app" per role keeps the admin login and the customer login apart on the same website.
   app = A.initializeApp(CFG.firebase, role || 'default');
+  if (CFG.appCheckKey) {
+    // Bot protection (Firebase App Check). Failures here must never stop the shop from loading.
+    try {
+      const AC = await import(CDN + 'firebase-app-check.js');
+      AC.initializeAppCheck(app, { provider: new AC.ReCaptchaV3Provider(CFG.appCheckKey), isTokenAutoRefreshEnabled: true });
+    } catch (e) { console.warn('app check skipped', e.code || e); }
+  }
   auth = AU.getAuth(app);
   db = FS.getFirestore(app);
   await auth.authStateReady();
@@ -114,6 +121,13 @@ export function watchDoc(col, id, cb) {
     (s) => cb(s.exists() ? { id: s.id, ...s.data() } : null),
     (err) => { console.warn('watchDoc failed:', col, err.code || err); cb(null, err); }
   );
+}
+
+// One-time read of a single document.
+export async function getOne(col, id) {
+  if (LOCAL) return LS.get(col).find((d) => d.id === id) || null;
+  const s = await FS.getDoc(FS.doc(db, col, id));
+  return s.exists() ? { id: s.id, ...s.data() } : null;
 }
 
 // One-time read (not live).
@@ -198,7 +212,7 @@ export async function uploadImage(file) {
 /* ----------------------------------------------------------- audience stats */
 // One small record per customer device: when first/last seen, visit count, installed or not.
 // Called by the shop app only. Failures are ignored on purpose (stats must never break the shop).
-export async function touchDevice({ installed = false, visit = true } = {}) {
+export async function touchDevice({ installed = false, visit = true, src = '', link = '', stage = 0 } = {}) {
   try {
     const id = _uid;
     if (!id) return;
@@ -211,12 +225,18 @@ export async function touchDevice({ installed = false, visit = true } = {}) {
     else { const snap = await FS.getDoc(FS.doc(db, 'devices', id)); cur = snap.exists() ? snap.data() : null; }
     if (!cur) {
       const doc = { firstSeen: now, lastSeen: now, visits: 1, installed: !!installed, platform, lang };
+      if (src) doc.src = String(src).slice(0, 30);
+      if (link) doc.link = String(link).slice(0, 30);
+      if (stage) doc.stage = stage;
       if (installed) doc.installedAt = now;
       await set('devices', id, doc);
       return;
     }
     const upd = { lastSeen: now, visits: (cur.visits || 0) + (visit ? 1 : 0), platform, lang };
     if (installed && !cur.installed) { upd.installed = true; upd.installedAt = now; }
+    if (src && !cur.src) upd.src = String(src).slice(0, 30);
+    if (link && !cur.link) upd.link = String(link).slice(0, 30);
+    if (stage > (cur.stage || 0)) upd.stage = stage;
     await set('devices', id, upd);
   } catch (e) { console.warn('stats skipped', e.code || e); }
 }
@@ -257,4 +277,15 @@ export function localNotify(title, body) {
   try {
     if ('Notification' in globalThis && Notification.permission === 'granted') new Notification(title, { body });
   } catch { /* ignore */ }
+}
+
+// Funnel: how far this phone got (1 looked at a product, 2 added to cart, 3 opened checkout, 4 ordered or sent a request).
+// Writes only when it moves forward, so it costs at most 4 small writes per phone.
+let _stage = 0;
+export async function bumpStage(n) {
+  try {
+    if (!_uid || n <= _stage) return;
+    _stage = n;
+    await set('devices', _uid, { stage: n });
+  } catch (e) { console.warn('stage skipped', e.code || e); }
 }

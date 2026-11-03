@@ -1,6 +1,6 @@
 import * as B from './shared/backend.js';
 import { HANDOFF_DEF, COURIER_DEF, parseAreas } from './shared/areas.js';
-import { $, $$, esc, eur, toast, sheet, ago, copy, monthKey, fmtDay, waNumber } from './shared/ui.js';
+import { $, $$, esc, eur, toast, sheet, ago, copy, monthKey, fmtDay, waNumber, getTheme, setTheme, themeIcon } from './shared/ui.js';
 
 const CFG = globalThis.GEWY_CONFIG || {};
 const S = {
@@ -26,12 +26,14 @@ function frame(title, body, { back = true } = {}) {
       ${back ? '<button class="iconbtn" data-act="home" aria-label="Back">←</button>' : ''}
       <div class="logo grow">${back ? '' : '<svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="17" width="18" height="3" rx="1.5" fill="currentColor" opacity=".35"/><rect x="3" y="12" width="18" height="3" rx="1.5" fill="currentColor" opacity=".6"/><rect x="3" y="7" width="18" height="3" rx="1.5" fill="currentColor" opacity=".85"/><rect x="3" y="2" width="18" height="3" rx="1.5" style="fill:var(--acc)"/></svg>'}<span>${back ? esc(title) : 'GEWY <b>ADMIN</b>'}</span></div>
       ${B.mode === 'demo' ? '<span class="chip blue">DEMO</span>' : ''}
+      <button class="iconbtn" data-act="theme" aria-label="Light or dark">${themeIcon()}</button>
       <button class="iconbtn" data-act="go" data-v="settings" aria-label="Settings">⚙️</button>
     </div></header>
     <main class="wrap" style="padding-bottom:60px">${body}</main>`;
 }
 
 function render() {
+  document.body.dataset.bg = S.user ? { products: 'shop', requests: 'custom', orders: 'orders' }[S.view] || '' : '';
   if (!S.user) return renderLogin();
   ({ home: viewHome, products: viewProducts, requests: viewRequests, orders: viewOrders, money: viewMoney, audience: viewAudience, notify: viewNotify, settings: viewSettings }[S.view] || viewHome)();
 }
@@ -450,6 +452,13 @@ function viewAudience() {
     const x = days.find((q) => q.key === dayKey(d.firstSeen)); if (x) x.n++;
     if (d.installedAt) { const y = days.find((q) => q.key === dayKey(d.installedAt)); if (y) y.inst++; }
   });
+  const SRC_LBL = { tiktok: '🎵 TikTok', instagram: '📸 Instagram', facebook: '👍 Facebook', friends: '🧑‍🤝‍🧑 Friends', other: '✨ Other', unknown: '❔ Not answered' };
+  const bySrc = {};
+  D.forEach((d) => { const k = d.src || 'unknown'; bySrc[k] = bySrc[k] || { n: 0, ord: 0 }; bySrc[k].n++; if ((d.stage || 0) >= 4) bySrc[k].ord++; });
+  const byLink = {};
+  D.forEach((d) => { if (d.link) { byLink[d.link] = byLink[d.link] || { n: 0, ord: 0 }; byLink[d.link].n++; if ((d.stage || 0) >= 4) byLink[d.link].ord++; } });
+  const steps = [['Visited the shop', 0], ['Looked at a product', 1], ['Added to cart', 2], ['Opened checkout', 3], ['Ordered or sent a request', 4]].map(([l, n]) => ({ l, n: D.filter((d) => (d.stage || 0) >= n).length }));
+  const rowsOf = (o, lbl) => Object.entries(o).sort((x, y) => y[1].n - x[1].n).map(([k, v]) => `<div class="row between" style="margin:6px 0"><span>${esc(lbl(k))}</span><b class="mono">${v.n} <span class="mut sm">· ${v.ord} ordered</span></b></div>`).join('');
   const max = Math.max(1, ...days.map((q) => q.n));
   frame('AUDIENCE', `<div class="gap"></div>
     <div class="stats">
@@ -465,6 +474,15 @@ function viewAudience() {
     <div class="card"><div class="row between"><span>Android</span><b class="mono">${plat.android || 0}</b></div><div class="sep" style="margin:8px 0"></div>
       <div class="row between"><span>iPhone</span><b class="mono">${plat.ios || 0}</b></div><div class="sep" style="margin:8px 0"></div>
       <div class="row between"><span>Computer</span><b class="mono">${plat.desktop || 0}</b></div></div>
+    <div class="h2">Where people come from</div>
+    <div class="card">${Object.keys(bySrc).length ? rowsOf(bySrc, (k) => SRC_LBL[k] || k) : '<span class="mut">Nobody yet.</span>'}
+      <p class="mut sm" style="margin:8px 0 0">From the "How did you find us?" question in the welcome screen.</p></div>
+    <div class="h2">Your tagged links</div>
+    <div class="card">${Object.keys(byLink).length ? rowsOf(byLink, (k) => '?src=' + k) : '<span class="mut">No tagged links used yet.</span>'}
+      <div class="gap-s"></div><label class="f"><span>Make a link for one video or post (letters and numbers only)</span><div class="row"><input class="in grow" id="lkTag" maxlength="30" placeholder="tiktok-video1"><button class="btn" data-act="copyTagged">Copy link</button></div></label>
+      <p class="mut sm" style="margin:0">Use a different tag in each TikTok bio, video or post. This list then shows which one brings people and orders.</p></div>
+    <div class="h2">From visit to order</div>
+    <div class="card">${steps.map((x) => `<div style="margin:8px 0"><div class="row between"><span>${esc(x.l)}</span><b class="mono">${x.n}${total ? ' · ' + Math.round((x.n / total) * 100) + '%' : ''}</b></div><div style="height:8px;border-radius:4px;background:var(--bg3);margin-top:4px;overflow:hidden"><i style="display:block;height:100%;width:${total ? Math.max(2, (x.n / total) * 100) : 0}%;background:linear-gradient(90deg,var(--acc),var(--acc2));border-radius:4px"></i></div></div>`).join('')}</div>
     <div class="h2">Loyalty</div>
     <div class="card"><div class="row between"><span>Came back at least once</span><b class="mono">${back} · ${pct(back)}</b></div></div>
     <p class="mut sm">A "person" is one phone or browser, so someone with two devices counts twice. "Installed" means they added it with the install button or opened it from the home screen icon, so iPhones are counted too. Your own test phones are included: use the button below to reset the counts before you launch.</p>
@@ -557,6 +575,12 @@ document.addEventListener('click', async (e) => {
       toast('Counts reset');
     }
     if (a === 'openShop') window.open(new URL('./', location.href).href, '_blank');
+    if (a === 'theme') { setTheme(getTheme() === 'light' ? 'dark' : 'light'); b.textContent = themeIcon(); }
+    if (a === 'copyTagged') {
+      const tag = ($('#lkTag').value || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 30);
+      if (!tag) return toast('Type a short tag first, for example tiktok-video1');
+      await copy(new URL('./', location.href).href + '?src=' + tag); toast('Link copied: ?src=' + tag, 4000);
+    }
     if (a === 'copyShop') { await copy(new URL('./', location.href).href); toast('Shop link copied'); }
     if (a === 'pushAdmin') {
       const r = await B.enablePush('admin');

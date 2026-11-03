@@ -102,3 +102,13 @@ export function waNumber(p) {
   else if (d.length === 10 && /^[26]/.test(d)) d = '30' + d;
   return d;
 }
+
+// Light / dark switch. Dark is the default.
+export const getTheme = () => { try { return localStorage.getItem('gewy:theme') === 'light' ? 'light' : 'dark'; } catch { return 'dark'; } };
+export function setTheme(th) {
+  try { localStorage.setItem('gewy:theme', th); } catch { /* ignore */ }
+  document.documentElement.dataset.theme = th;
+  const m = document.querySelector('meta[name=theme-color]');
+  if (m) m.setAttribute('content', th === 'light' ? '#f3f7fd' : '#0d0e10');
+}
+export const themeIcon = () => (getTheme() === 'light' ? '🌙' : '☀️');
