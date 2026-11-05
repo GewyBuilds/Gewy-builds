@@ -212,7 +212,7 @@ export async function uploadImage(file) {
 /* ----------------------------------------------------------- audience stats */
 // One small record per customer device: when first/last seen, visit count, installed or not.
 // Called by the shop app only. Failures are ignored on purpose (stats must never break the shop).
-export async function touchDevice({ installed = false, visit = true, src = '', link = '', stage = 0 } = {}) {
+export async function touchDevice({ installed = false, visit = true, src = '', link = '', stage = 0, area = '' } = {}) {
   try {
     const id = _uid;
     if (!id) return;
@@ -228,6 +228,7 @@ export async function touchDevice({ installed = false, visit = true, src = '', l
       if (src) doc.src = String(src).slice(0, 30);
       if (link) doc.link = String(link).slice(0, 30);
       if (stage) doc.stage = stage;
+      if (area) doc.area = String(area).slice(0, 60);
       if (installed) doc.installedAt = now;
       await set('devices', id, doc);
       return;
@@ -237,6 +238,7 @@ export async function touchDevice({ installed = false, visit = true, src = '', l
     if (src && !cur.src) upd.src = String(src).slice(0, 30);
     if (link && !cur.link) upd.link = String(link).slice(0, 30);
     if (stage > (cur.stage || 0)) upd.stage = stage;
+    if (area && area !== cur.area) upd.area = String(area).slice(0, 60);
     await set('devices', id, upd);
   } catch (e) { console.warn('stats skipped', e.code || e); }
 }
@@ -289,3 +291,93 @@ export async function bumpStage(n) {
     await set('devices', _uid, { stage: n });
   } catch (e) { console.warn('stage skipped', e.code || e); }
 }
+
+/* ------------------------------------------------- optional customer accounts */
+// Everybody starts as a guest (a hidden anonymous login). Making an account upgrades that SAME login with an
+// email + password, so anything the guest already ordered stays theirs. Logging in on another phone signs into the account.
+const AUTH_ERR = {
+  'auth/email-already-in-use': 'exists', 'auth/credential-already-in-use': 'exists', 'auth/invalid-email': 'email', 'auth/missing-email': 'email',
+  'auth/weak-password': 'weak', 'auth/missing-password': 'weak', 'auth/invalid-credential': 'bad', 'auth/wrong-password': 'bad',
+  'auth/user-not-found': 'bad', 'auth/invalid-login-credentials': 'bad', 'auth/too-many-requests': 'many', 'auth/network-request-failed': 'net',
+};
+const authFail = (e) => { const x = new Error((e && e.message) || 'auth'); x.key = AUTH_ERR[e && e.code] || (e && e.key) || 'err'; return x; };
+const accts = () => { try { return JSON.parse(localStorage.getItem('gewy:accts') || '[]'); } catch { return []; } };
+
+export function account() {
+  if (LOCAL) { const e = localStorage.getItem('gewy:acct'); return e ? { email: e, verified: localStorage.getItem('gewy:acctv') === '1', uid: _uid } : null; }
+  const u = auth && auth.currentUser;
+  return u && !u.isAnonymous && u.email ? { email: u.email, verified: !!u.emailVerified, uid: u.uid } : null;
+}
+
+export async function signUp(email, pw) {
+  email = String(email || '').trim();
+  if (!/^\S+@\S+\.\S+$/.test(email)) throw authFail({ code: 'auth/invalid-email' });
+  if (String(pw || '').length < 6) throw authFail({ code: 'auth/weak-password' });
+  const now = Date.now();
+  if (LOCAL) {
+    if (accts().some((a) => a.email.toLowerCase() === email.toLowerCase())) throw authFail({ code: 'auth/email-already-in-use' });
+    localStorage.setItem('gewy:accts', JSON.stringify([...accts(), { email, pw, uid: _uid }]));
+    localStorage.setItem('gewy:acct', email);
+    await set('accounts', _uid, { createdAt: now, lastSeen: now });
+    return;
+  }
+  try {
+    const u = auth.currentUser;
+    if (u && u.isAnonymous) await AU.linkWithCredential(u, AU.EmailAuthProvider.credential(email, pw));
+    else await AU.createUserWithEmailAndPassword(auth, email, pw);
+    await auth.currentUser.getIdToken(true); // the new token now carries the email, which the database rules look at
+    _uid = auth.currentUser.uid;
+  } catch (e) { throw authFail(e); }
+  try { await AU.sendEmailVerification(auth.currentUser); } catch (e) { console.warn('verification mail skipped', e.code || e); }
+  await set('accounts', _uid, { createdAt: now, lastSeen: now });
+}
+
+export async function signIn(email, pw) {
+  email = String(email || '').trim();
+  if (LOCAL) {
+    const a = accts().find((x) => x.email.toLowerCase() === email.toLowerCase() && x.pw === pw);
+    if (!a) throw authFail({ code: 'auth/invalid-credential' });
+    localStorage.setItem('gewy:uid', a.uid);
+    localStorage.setItem('gewy:acct', a.email);
+    return;
+  }
+  try { await AU.signInWithEmailAndPassword(auth, email, pw); } catch (e) { throw authFail(e); }
+}
+
+export async function signOutAccount() {
+  if (LOCAL) { localStorage.removeItem('gewy:acct'); localStorage.setItem('gewy:uid', 'u_' + rid()); return; }
+  await AU.signOut(auth); // the page reloads after this and starts a fresh guest login
+}
+
+export async function resetPassword(email) {
+  email = String(email || '').trim();
+  if (!/^\S+@\S+\.\S+$/.test(email)) throw authFail({ code: 'auth/invalid-email' });
+  if (LOCAL) return;
+  try { await AU.sendPasswordResetEmail(auth, email); } catch (e) { throw authFail(e); }
+}
+
+export async function resendVerification() {
+  if (LOCAL) { localStorage.setItem('gewy:acctv', '1'); return; }
+  try { await AU.sendEmailVerification(auth.currentUser); } catch (e) { throw authFail(e); }
+}
+
+// Logged-in customers only: shows "active in the last 5 minutes" in the admin Audience page. Cheap: one small write per call.
+let _beat = 0;
+export async function heartbeat({ area = '', force = false } = {}) {
+  try {
+    if (!account() || !_uid) return;
+    const now = Date.now();
+    if (!force && now - _beat < 4.5 * 60 * 1000) return;
+    _beat = now;
+    await set('accounts', _uid, { lastSeen: now, ...(area ? { area: String(area).slice(0, 60) } : {}) });
+  } catch (e) { console.warn('heartbeat skipped', e.code || e); }
+}
+
+// Admin app: is the signed-in user really the shop owner? (A customer account must not get into the admin screens.)
+export async function isOwner() {
+  if (LOCAL) return true;
+  try { await FS.getDocs(FS.query(FS.collection(db, 'broadcasts'), FS.limit(1))); return true; }
+  catch (e) { return !(e && e.code === 'permission-denied'); }
+}
+export async function adminEmailVerified() { return LOCAL ? true : !!(auth.currentUser && auth.currentUser.emailVerified); }
+export async function adminSendVerification() { if (!LOCAL) await AU.sendEmailVerification(auth.currentUser); }
