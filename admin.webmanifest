@@ -1,9 +1,10 @@
 {
+  "id": "/Gewy-builds/admin.html",
   "name": "Gewy Builds Admin",
   "short_name": "Gewy Admin",
   "description": "Manage products, custom requests, orders and money",
   "start_url": "./admin.html",
-  "scope": "./admin.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0d0e10",
   "theme_color": "#0d0e10",
