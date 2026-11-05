@@ -4,7 +4,7 @@
   "short_name": "Gewy Admin",
   "description": "Manage products, custom requests, orders and money",
   "start_url": "./admin.html",
-  "scope": "./",
+  "scope": "./admin.html",
   "display": "standalone",
   "background_color": "#0d0e10",
   "theme_color": "#0d0e10",
