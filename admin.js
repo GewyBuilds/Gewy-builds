@@ -1,10 +1,11 @@
 import * as B from './shared/backend.js';
 import { HANDOFF_DEF, COURIER_DEF, parseAreas } from './shared/areas.js';
-import { $, $$, esc, eur, toast, sheet, ago, copy, monthKey, fmtDay, waNumber, getTheme, setTheme, themeIcon } from './shared/ui.js';
+import { $, $$, esc, eur, toast, sheet, ago, copy, monthKey, fmtDay, waNumber, getTheme, setTheme, themeIcon, rid } from './shared/ui.js';
+import { filamentsOf, optionsOf, stockOf, wasPrice, pctOff } from './shared/stock.js';
 
 const CFG = globalThis.GEWY_CONFIG || {};
 const S = {
-  view: 'home', user: null, products: [], requests: [], orders: [], subs: [], devices: [], settings: {},
+  view: 'home', user: null, products: [], requests: [], orders: [], subs: [], devices: [], accounts: [], blocks: [], verified: true, settings: {},
   ofilter: 'active', stops: [], threadRedraw: null,
 };
 const digits = (s) => String(s || '').replace(/\D/g, '');
@@ -33,9 +34,9 @@ function frame(title, body, { back = true } = {}) {
 }
 
 function render() {
-  document.body.dataset.bg = S.user ? { products: 'shop', requests: 'custom', orders: 'orders' }[S.view] || '' : '';
+  document.body.dataset.bg = S.user ? { products: 'shop', filaments: 'shop', requests: 'custom', orders: 'orders' }[S.view] || '' : '';
   if (!S.user) return renderLogin();
-  ({ home: viewHome, products: viewProducts, requests: viewRequests, orders: viewOrders, money: viewMoney, audience: viewAudience, notify: viewNotify, settings: viewSettings }[S.view] || viewHome)();
+  ({ home: viewHome, products: viewProducts, filaments: viewFilaments, requests: viewRequests, orders: viewOrders, money: viewMoney, audience: viewAudience, notify: viewNotify, settings: viewSettings }[S.view] || viewHome)();
 }
 
 /* ---------------------------------------------------------------- login */
@@ -56,13 +57,14 @@ function viewHome() {
   const m = moneyStats();
   const tile = (v, ic, tt, st, bd) => `<button class="tile" data-act="go" data-v="${v}">${bd ? `<span class="bd">${bd}</span>` : ''}<span class="ic">${ic}</span><span><div class="tt">${tt}</div><div class="st">${st}</div></span></button>`;
   frame('', `<div class="gap"></div>
-    ${pushNudge()}
+    ${pushNudge()}${verifyNudge()}
     <div class="tiles">
       ${tile('products', '🧩', 'PRODUCTS', `${S.products.filter((p) => p.published !== false).length} live`, 0)}
+      ${tile('filaments', '🧵', 'FILAMENTS', filStatus(), 0)}
       ${tile('requests', '✏️', 'REQUESTS', openReq ? `${openReq} waiting for you` : 'all answered', openReq)}
       ${tile('orders', '📦', 'ORDERS', `${S.orders.filter((o) => ['new', 'making', 'ready'].includes(o.status)).length} active`, newOrders)}
       ${tile('money', '💶', 'MONEY', `${eur(m.profit)} profit`, 0)}
-      ${tile('audience', '👥', 'AUDIENCE', `${S.devices.length} people · ${S.devices.filter((d) => d.installed).length} installed`, 0)}
+      ${tile('audience', '👥', 'AUDIENCE', `${S.devices.length} phones · ${S.accounts.length} accounts`, 0)}
       ${B.pushAvailable ? tile('notify', '🔔', 'NOTIFY', B.mode === 'demo' ? 'send an alert' : `${S.subs.filter((x) => x.role === 'shop').length} phones`, 0) : ''}
       ${tile('settings', '⚙️', 'SETTINGS', S.settings.payLink ? 'payments set up' : 'set up payments', S.settings.payLink ? 0 : '!')}
     </div>
@@ -82,8 +84,8 @@ function viewProducts() {
       const margin = p.cost ? ` · profit ${eur(p.price - p.cost)}` : '';
       return `<button class="card prod" style="padding:10px" data-act="editProd" data-id="${esc(p.id)}"><div class="row">
         <div style="width:64px;height:64px;border-radius:12px;overflow:hidden;background:var(--bg3);flex:none">${p.images && p.images[0] ? `<img src="${esc(p.images[0])}" style="width:100%;height:100%;object-fit:cover" alt="">` : '<div class="noimg">🧩</div>'}</div>
-        <div class="grow"><b>${esc(p.name)}</b><div class="mono mut sm">${eur(p.price)}${margin}</div>
-        <div class="chips" style="margin-top:4px">${p.published === false ? '<span class="chip warn">hidden</span>' : '<span class="chip ok">live</span>'}${p.soldOut ? '<span class="chip bad">sold out</span>' : ''}</div></div></div></button>`;
+        <div class="grow"><b>${esc(p.name)}</b><div class="mono mut sm">${wasPrice(p) ? `<s>${eur(wasPrice(p))}</s> ` : ''}${eur(p.price)}${margin}</div>
+        <div class="chips" style="margin-top:4px">${p.published === false ? '<span class="chip warn">hidden</span>' : '<span class="chip ok">live</span>'}${chipsStock(p)}${wasPrice(p) ? `<span class="chip acc">−${pctOff(p)}%</span>` : ''}${optionsOf(p).length ? `<span class="chip blue">${optionsOf(p).length} colors</span>` : ''}</div></div></div></button>`;
     }).join('') : `<div class="empty">No products yet. Tap “Add product”.</div>${B.mode === 'demo' ? '<div class="gap"></div><button class="btn block" data-act="seed">Load 3 demo products</button>' : ''}`}`);
 }
 
@@ -104,22 +106,49 @@ async function seedDemo() {
   toast('Demo products added');
 }
 
+function stockChip(st) { return st.out ? '<span class="chip bad">sold out</span>' : st.low ? '<span class="chip warn">low stock</span>' : ''; }
+function chipsStock(p) {
+  const st = stockOf(p, S.settings);
+  const manual = p.soldOut ? '' : (st.out ? ' <span class="mut sm">(filament off)</span>' : '');
+  return stockChip(st) + manual;
+}
+function filStatus() {
+  const f = filamentsOf(S.settings);
+  if (!f.length) return 'add your filaments';
+  return `${f.filter((x) => x.on === false).length} off · ${f.filter((x) => x.low && x.on !== false).length} low`;
+}
+const r2 = (n) => Math.round(n * 100) / 100;
+
 function openProductEditor(id) {
   const old = S.products.find((p) => p.id === id);
-  const p = old || { name: '', price: '', cost: '', category: '', colors: [], description: '', images: [], published: true, soldOut: false };
+  const p = old || { name: '', price: '', listPrice: 0, cost: '', category: '', colors: [], options: [], filament: '', description: '', images: [], published: true, soldOut: false };
   const imgs = [...(p.images || [])];
   const files = [];
+  const opts = (old ? optionsOf(p) : []).map((o) => ({ name: o.name, filament: o.filament || '', images: [...(o.images || [])], files: [] }));
+  const fils = filamentsOf(S.settings);
+  const filOpts = (sel) => '<option value="">— none —</option>' + fils.map((f) => `<option value="${esc(f.id)}"${f.id === sel ? ' selected' : ''}>${esc(f.name)}${f.on === false ? ' (OFF)' : ''}</option>`).join('');
+  const hasDisc = !!wasPrice(p);
   const s = sheet(`
     <div class="hd"><div class="ttl">${old ? 'Edit product' : 'New product'}</div><button class="xbtn" data-close>✕</button></div>
     <div class="h2">Photos</div><div class="thumbs" id="eTh"></div><input type="file" id="eF" accept="image/*" multiple class="hide">
     <label class="f"><span>Name</span><input class="in" id="eN" value="${esc(p.name)}"></label>
-    <div class="two"><label class="f"><span>Price (${esc(CFG.currency || 'EUR')})</span><input class="in" id="eP" inputmode="decimal" value="${esc(p.price)}"></label>
+    <div class="two"><label class="f"><span>Normal price (${esc(CFG.currency || 'EUR')})</span><input class="in" id="eP" inputmode="decimal" value="${esc(hasDisc ? wasPrice(p) : p.price)}"></label>
     <label class="f"><span>Cost to make</span><input class="in" id="eC" inputmode="decimal" value="${esc(p.cost)}"></label></div>
-    <label class="f"><span>Colors (comma separated)</span><input class="in" id="eCo" placeholder="Black, Orange, Pink" value="${esc((p.colors || []).join(', '))}"></label>
+    <div class="h2">Discount</div>
+    <div class="two"><label class="f"><span>Type</span><select class="in" id="eDm"><option value="none">No discount</option><option value="percent">Percent off</option><option value="price"${hasDisc ? ' selected' : ''}>New lower price</option></select></label>
+    <label class="f"><span id="eDl">Value</span><input class="in" id="eDv" inputmode="decimal" value="${hasDisc ? esc(p.price) : ''}"></label></div>
+    <div class="card" id="ePrev" style="margin-top:8px"></div>
+    <div class="h2">Filament</div>
+    <label class="f"><span>Which filament does this product use?</span><select class="in" id="eFil">${filOpts(p.filament || '')}</select></label>
+    ${fils.length ? '' : '<p class="mut sm">Add your filaments first in the FILAMENTS tab, then pick one here.</p>'}
+    <div class="h2">Color options <span class="mut sm">(optional)</span></div>
+    <p class="mut sm">Leave empty for a one-color product. Add options (green, red, orange…) and each gets its own photos and its own filament, so only that color goes out of stock when its filament is off.</p>
+    <div id="eOpts"></div><input type="file" id="eOF" accept="image/*" multiple class="hide">
+    <button class="btn block" data-a="addOpt">＋ Add color option</button>
     <label class="f"><span>Category</span><input class="in" id="eCa" value="${esc(p.category || '')}"></label>
     <label class="f"><span>Description</span><textarea class="in" id="eD">${esc(p.description || '')}</textarea></label>
     <label class="check"><input type="checkbox" id="eV" ${p.published !== false ? 'checked' : ''}> <span>Visible in the shop</span></label>
-    <label class="check"><input type="checkbox" id="eS" ${p.soldOut ? 'checked' : ''}> <span>Mark as sold out</span></label>
+    <label class="check"><input type="checkbox" id="eS" ${p.soldOut ? 'checked' : ''}> <span>Mark as sold out by hand (all colors)</span></label>
     ${B.pushAvailable ? `<label class="check"><input type="checkbox" id="eNo" ${old ? '' : 'checked'}> <span>🔔 Notify customers about this product</span></label>` : ''}
     <div class="gap"></div><button class="btn pri block" data-a="save">${old ? 'Save changes' : 'Publish product'}</button>
     ${old ? '<div class="gap-s"></div><button class="btn bad block" data-a="del">Delete product</button>' : ''}`);
@@ -128,11 +157,57 @@ function openProductEditor(id) {
       files.map((f, i) => `<div class="thumb"><img src="${URL.createObjectURL(f)}" alt=""><button data-a="rmF" data-i="${i}">✕</button></div>`).join('') +
       (imgs.length + files.length < B.MAX_PHOTOS ? '<button class="addimg" data-a="pick">＋</button>' : '<span class="mut sm" style="align-self:center">max ' + B.MAX_PHOTOS + ' photos</span>');
   };
-  draw();
+  const drawOpts = () => {
+    $('#eOpts', s.el).innerHTML = opts.map((o, i) => `<div class="card" style="margin-bottom:8px"><div class="row"><input class="in grow" data-f="name" data-i="${i}" placeholder="Color name, e.g. Red" value="${esc(o.name)}"><button class="xbtn" data-a="rmO" data-i="${i}" aria-label="Remove">🗑</button></div>
+      <label class="f"><span>Filament for this color</span><select class="in" data-f="fil" data-i="${i}">${filOpts(o.filament)}</select></label>
+      <div class="thumbs">${o.images.map((u, j) => `<div class="thumb"><img src="${esc(u)}" alt=""><button data-a="rmOI" data-i="${i}" data-j="${j}">✕</button></div>`).join('')}${o.files.map((f, j) => `<div class="thumb"><img src="${URL.createObjectURL(f)}" alt=""><button data-a="rmOF" data-i="${i}" data-j="${j}">✕</button></div>`).join('')}${o.images.length + o.files.length < B.MAX_PHOTOS ? `<button class="addimg" data-a="pickO" data-i="${i}">＋</button>` : ''}</div></div>`).join('');
+  };
+  const final = () => {
+    const normal = num($('#eP', s.el).value);
+    const mode = $('#eDm', s.el).value;
+    const v = num($('#eDv', s.el).value);
+    let price = normal;
+    if (mode === 'percent' && v > 0 && v < 100) price = r2(normal * (1 - v / 100));
+    if (mode === 'price' && v > 0) price = r2(v);
+    return { normal, price, disc: mode !== 'none' && price < normal, bad: mode !== 'none' && (!(v > 0) || price >= normal) };
+  };
+  const preview = () => {
+    const f = final(); const cost = num($('#eC', s.el).value);
+    $('#eDl', s.el).textContent = $('#eDm', s.el).value === 'percent' ? 'Percent off (%)' : 'New price';
+    $('#eDv', s.el).disabled = $('#eDm', s.el).value === 'none';
+    let h = '';
+    if (!f.normal) h = '<span class="mut">Type the normal price to see the preview.</span>';
+    else {
+      const pr = f.price - cost;
+      h = `<div class="row between"><span class="mut">Customer pays</span><b class="mono" style="font-size:20px">${f.disc ? `<s class="mut" style="font-size:14px">${eur(f.normal)}</s> ` : ''}${eur(f.price)}</b></div>`;
+      if (f.disc) h += `<div class="row between"><span class="mut">Discount</span><b class="mono">−${Math.round((1 - f.price / f.normal) * 100)}% · saves them ${eur(f.normal - f.price)}</b></div>`;
+      if (cost > 0) h += `<div class="row between"><span class="mut">You earn per item</span><b class="mono" style="color:${pr < 0 ? 'var(--bad, #ff5d5d)' : 'var(--ok, #35d07f)'}">${eur(pr)}${f.disc ? ` <span class="mut sm">(was ${eur(f.normal - cost)})</span>` : ''}</b></div>`;
+      if (cost > 0 && pr < 0) h += '<div class="mut sm" style="color:var(--bad, #ff5d5d)">⚠ The discounted price is below your cost.</div>';
+      if (f.bad) h += '<div class="mut sm" style="color:var(--bad, #ff5d5d)">⚠ The discount needs a value that makes the price lower than the normal price.</div>';
+    }
+    $('#ePrev', s.el).innerHTML = h;
+  };
+  draw(); drawOpts(); preview();
+  let pickIdx = -1;
   $('#eF', s.el).addEventListener('change', (e) => {
     const room = Math.max(0, B.MAX_PHOTOS - imgs.length - files.length);
     if (e.target.files.length > room) toast('Up to ' + B.MAX_PHOTOS + ' photos per product');
     files.push(...[...e.target.files].slice(0, room)); e.target.value = ''; draw();
+  });
+  $('#eOF', s.el).addEventListener('change', (e) => {
+    const o = opts[pickIdx]; if (!o) return;
+    const room = Math.max(0, B.MAX_PHOTOS - o.images.length - o.files.length);
+    o.files.push(...[...e.target.files].slice(0, room)); e.target.value = ''; drawOpts();
+  });
+  s.el.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.dataset && t.dataset.f === 'name') opts[+t.dataset.i].name = t.value;
+    if (['eP', 'eC', 'eDv'].includes(t.id)) preview();
+  });
+  s.el.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.dataset && t.dataset.f === 'fil') opts[+t.dataset.i].filament = t.value;
+    if (t.id === 'eDm') preview();
   });
   s.el.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-a]');
@@ -141,35 +216,165 @@ function openProductEditor(id) {
     if (a === 'pick') $('#eF', s.el).click();
     if (a === 'rmI') { imgs.splice(+b.dataset.i, 1); draw(); }
     if (a === 'rmF') { files.splice(+b.dataset.i, 1); draw(); }
+    if (a === 'addOpt') { opts.push({ name: '', filament: $('#eFil', s.el).value || '', images: [], files: [] }); drawOpts(); }
+    if (a === 'rmO') { opts.splice(+b.dataset.i, 1); drawOpts(); }
+    if (a === 'pickO') { pickIdx = +b.dataset.i; $('#eOF', s.el).click(); }
+    if (a === 'rmOI') { opts[+b.dataset.i].images.splice(+b.dataset.j, 1); drawOpts(); }
+    if (a === 'rmOF') { opts[+b.dataset.i].files.splice(+b.dataset.j, 1); drawOpts(); }
     if (a === 'del') {
       if (!confirm('Delete this product for good?')) return;
       await B.del('products', id); s.close(); toast('Deleted');
     }
     if (a === 'save') {
       const name = $('#eN', s.el).value.trim();
-      const price = num($('#eP', s.el).value);
-      if (!name || !price) return toast('Add a name and a price');
+      const f = final();
+      if (!name || !f.normal) return toast('Add a name and a price');
+      if (f.bad) return toast('Fix the discount value first');
+      const names = opts.map((o) => o.name.trim());
+      if (names.some((n) => !n)) return toast('Give every color option a name');
+      if (new Set(names.map((n) => n.toLowerCase())).size !== names.length) return toast('Two color options have the same name');
       b.disabled = true; b.textContent = 'Saving…';
       try {
         const urls = [...imgs];
-        for (const f of files) urls.push(await B.uploadImage(f, 'products'));
+        for (const x of files) urls.push(await B.uploadImage(x, 'products'));
+        const options = [];
+        for (const o of opts) {
+          const oi = [...o.images];
+          for (const x of o.files) oi.push(await B.uploadImage(x, 'products'));
+          options.push({ name: o.name.trim(), filament: o.filament || '', images: oi });
+        }
         const published = $('#eV', s.el).checked;
         const data = {
-          name, price, cost: num($('#eC', s.el).value), category: $('#eCa', s.el).value.trim(),
-          colors: $('#eCo', s.el).value.split(',').map((x) => x.trim()).filter(Boolean),
+          name, price: f.price, listPrice: f.disc ? f.normal : null, cost: num($('#eC', s.el).value), category: $('#eCa', s.el).value.trim(),
+          filament: $('#eFil', s.el).value || '', options, colors: options.map((o) => o.name),
           description: $('#eD', s.el).value.trim(), images: urls, published, soldOut: $('#eS', s.el).checked, updatedAt: Date.now(),
         };
+        if (JSON.stringify(data).length > 900000) { toast('Too many photos for one product. Remove a few.', 5000); b.disabled = false; b.textContent = old ? 'Save changes' : 'Publish product'; return; }
         let pid = id;
         if (old) await B.set('products', id, data);
         else pid = await B.add('products', { ...data, createdAt: Date.now() });
         if ($('#eNo', s.el) && $('#eNo', s.el).checked && published && !data.soldOut) {
-          await B.add('broadcasts', { title: (old ? 'Update: ' : 'New: ') + name, body: `${eur(price)}${data.description ? ' · ' + data.description.slice(0, 80) : ''}`, productId: pid, at: Date.now() });
+          await B.add('broadcasts', { title: (old ? 'Update: ' : 'New: ') + name, body: `${eur(data.price)}${data.description ? ' · ' + data.description.slice(0, 80) : ''}`, productId: pid, at: Date.now() });
           toast('Saved · customers notified 🔔');
         } else toast('Saved');
         s.close();
-      } catch (err) { console.error(err); toast('Could not save: ' + (err.code || err.message)); b.disabled = false; b.textContent = 'Save changes'; }
+      } catch (err) { console.error(err); toast('Could not save: ' + (err.code || err.message)); b.disabled = false; b.textContent = old ? 'Save changes' : 'Publish product'; }
     }
   });
+}
+
+/* ------------------------------------------------------------- filaments */
+const usesFil = (p, fid) => p.filament === fid || optionsOf(p).some((o) => o.filament === fid);
+async function saveFilaments(list) { await B.set('settings', 'shop', { filaments: list, updatedAt: Date.now() }); }
+function viewFilaments() {
+  const fs = filamentsOf(S.settings);
+  frame('FILAMENTS', `<div class="gap"></div>
+    <p class="mut sm">Add each filament you use. Switch one OFF when it runs out: every product (or color) that uses it shows as sold out in the shop right away. Switch it back ON when you restock.</p>
+    <button class="btn pri block" data-act="filEdit" data-id="">＋ Add filament</button><div class="gap"></div>
+    ${fs.length ? fs.map((f) => {
+      const on = f.on !== false; const n = S.products.filter((p) => usesFil(p, f.id)).length;
+      return `<div class="card"><div class="row between"><div class="row"><span style="width:22px;height:22px;border-radius:50%;flex:none;background:${esc(f.color || '#888')};border:1px solid var(--line)"></span><b>${esc(f.name)}</b></div>
+        <div class="chips">${on ? '<span class="chip ok">IN STOCK</span>' : '<span class="chip bad">OFF · sold out</span>'}${f.low && on ? '<span class="chip warn">low</span>' : ''}</div></div>
+        <div class="mut sm" style="margin:4px 0 8px">${n} product${n === 1 ? '' : 's'} use it</div>
+        <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm${on ? '' : ' pri'}" data-act="filOn" data-id="${esc(f.id)}">${on ? 'Switch OFF (sold out)' : 'Switch ON (back in stock)'}</button>
+        <button class="btn sm" data-act="filLow" data-id="${esc(f.id)}">${f.low ? '✓ Low stock · clear' : 'Mark low stock'}</button>
+        <button class="btn sm" data-act="filEdit" data-id="${esc(f.id)}">✎ Edit</button></div></div>`;
+    }).join('') : '<div class="empty">No filaments yet. Tap “Add filament”, for example “Orange PLA”.</div>'}`);
+}
+function openFilament(id) {
+  const old = filamentsOf(S.settings).find((f) => f.id === id);
+  const s = sheet(`<div class="hd"><div class="ttl">${old ? 'Edit filament' : 'New filament'}</div><button class="xbtn" data-close>✕</button></div>
+    <label class="f"><span>Name</span><input class="in" id="fN" placeholder="Orange PLA" value="${esc(old ? old.name : '')}"></label>
+    <label class="f"><span>Color</span><input class="in" id="fC" type="color" value="${esc(old && old.color ? old.color : '#ff6a1a')}" style="height:48px;padding:4px"></label>
+    <div class="gap"></div><button class="btn pri block" data-a="save">Save</button>
+    ${old ? '<div class="gap-s"></div><button class="btn bad block" data-a="del">Delete filament</button>' : ''}`);
+  s.el.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-a]'); if (!b) return;
+    const list = [...filamentsOf(S.settings)];
+    if (b.dataset.a === 'save') {
+      const name = $('#fN', s.el).value.trim(); if (!name) return toast('Add a name');
+      if (old) { const f = list.find((x) => x.id === id); f.name = name; f.color = $('#fC', s.el).value; }
+      else list.push({ id: rid(), name, color: $('#fC', s.el).value, on: true, low: false });
+      await saveFilaments(list); s.close(); toast('Saved');
+    }
+    if (b.dataset.a === 'del') {
+      if (!confirm('Delete this filament? Products using it stay, but are no longer linked.')) return;
+      await saveFilaments(list.filter((x) => x.id !== id)); s.close(); toast('Deleted');
+    }
+  });
+}
+
+/* ------------------------------------------------------- v15 helpers */
+const phoneKey = (p) => String(p || '').replace(/\D/g, '').replace(/^00/, '').replace(/^30/, '');
+const trackWa = (o) => {
+  const c = o.customer || {};
+  const txt = `Hi ${c.name || ''}! Your order ${o.no} is on its way. Tracking number: ${o.tracking}.${o.delivery === 'boxnow' ? ' Box Now will text you the locker and the pickup code when it arrives.' : ''}`;
+  return `https://wa.me/${waNumber(c.phone)}?text=${encodeURIComponent(txt)}`;
+};
+function preorderInfo(r) {
+  if (r.kind !== 'preorder') return '';
+  const p = S.products.find((x) => x.id === r.pid);
+  let st = '';
+  if (p) {
+    const sk = stockOf(p, S.settings);
+    const o = r.option ? sk.opts.find((x) => x.name === r.option) : null;
+    st = (o ? o.out : sk.out) ? '<span class="chip bad">still sold out</span>' : '<span class="chip ok">back in stock now</span>';
+  }
+  return `<div class="chips" style="margin:6px 0"><span class="chip acc">🔔 PRE-ORDER</span>${st}</div>`;
+}
+const verifyNudge = () => (S.verified ? '' : '<div class="banner">✉️ <span class="grow">Verify your own email for extra safety. I send you a link.</span><button class="btn sm pri" data-act="verifyAdmin">Send link</button></div><div class="gap"></div>');
+
+// Block a sender: their phone number and their device. Blocked senders cannot send orders, requests or messages (the database refuses them).
+async function blockSender({ uid, phone, label }) {
+  const now = Date.now();
+  const k = phoneKey(phone);
+  let n = 0;
+  if (uid && uid !== B.uid()) { await B.set('blocks', uid, { kind: 'device', label: label || '', at: now }); n++; }
+  if (k.length >= 6) { await B.set('blocks', k, { kind: 'phone', label: label || '', at: now }); n++; }
+  return n;
+}
+function blockedHtml() {
+  const rows = [...S.blocks].sort((a, b) => (b.at || 0) - (a.at || 0));
+  return rows.length ? rows.map((x) => `<div class="row between" style="margin:6px 0"><span>${x.kind === 'phone' ? '📞 ' + esc(x.id) : '📱 device'}${x.label ? ' · ' + esc(x.label) : ''}<span class="mut sm"> · ${esc(ago(x.at))}</span></span><button class="btn sm" data-act="unblock" data-id="${esc(x.id)}">Unblock</button></div>`).join('')
+    : '<span class="mut">Nobody is blocked.</span>';
+}
+function drawBlocks() { const el = $('#blkList'); if (el) el.innerHTML = blockedHtml(); }
+
+// Backup: spreadsheets for you, and one full file with everything.
+const csvOf = (rows) => rows.map((r) => r.map((v) => '"' + String(v ?? '').replaceAll('"', '""') + '"').join(',')).join('\n');
+function saveFile(name, text, type = 'text/csv') {
+  const blob = new Blob([type === 'text/csv' ? '\ufeff' + text : text], { type });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+const today = () => new Date().toISOString().slice(0, 10);
+function backupOrders() {
+  const rows = [['Date', 'Order', 'Customer', 'Phone', 'Area', 'Address / locker', 'Items', 'Total', 'Cost', 'Payment', 'Paid status', 'Status', 'Tracking']];
+  [...S.orders].sort((a, b) => a.createdAt - b.createdAt).forEach((o) => { const c = o.customer || {}; rows.push([new Date(o.createdAt).toISOString().slice(0, 10), o.no, c.name, c.phone, c.area, c.address, (o.items || []).map((i) => `${i.name} x${i.qty}`).join('; '), o.total, o.costTotal || 0, o.payMethod, o.payStatus, o.status, o.tracking || '']); });
+  saveFile(`gewy-orders-${today()}.csv`, csvOf(rows));
+}
+function backupCustomers() {
+  const m = new Map();
+  S.orders.filter((o) => o.source !== 'manual').forEach((o) => {
+    const c = o.customer || {}; const k = phoneKey(c.phone) || 'o' + o.id;
+    const e = m.get(k) || { name: '', phone: '', area: '', address: '', orders: 0, requests: 0, spent: 0, last: 0 };
+    e.name = c.name || e.name; e.phone = c.phone || e.phone; e.area = c.area || e.area; e.address = c.address || e.address;
+    e.orders++; if (o.payStatus === 'paid') e.spent += o.total; e.last = Math.max(e.last, o.createdAt || 0); m.set(k, e);
+  });
+  S.requests.forEach((r) => {
+    const k = phoneKey(r.phone); if (!k) return;
+    const e = m.get(k) || { name: r.name, phone: r.phone, area: r.area || '', address: '', orders: 0, requests: 0, spent: 0, last: 0 };
+    e.requests++; e.last = Math.max(e.last, r.createdAt || 0); m.set(k, e);
+  });
+  const rows = [['Name', 'Phone', 'Area', 'Address', 'Orders', 'Requests', 'Paid total', 'Last activity']];
+  [...m.values()].sort((a, b) => b.last - a.last).forEach((e) => rows.push([e.name, e.phone, e.area, e.address, e.orders, e.requests, e.spent, e.last ? new Date(e.last).toISOString().slice(0, 10) : '']));
+  saveFile(`gewy-customers-${today()}.csv`, csvOf(rows));
+}
+async function backupAll() {
+  const out = { app: 'gewy-builds', exportedAt: new Date().toISOString(), data: {} };
+  for (const c of ['products', 'orders', 'requests', 'messages', 'settings', 'accounts', 'devices', 'blocks']) out.data[c] = await B.getAll(c);
+  saveFile(`gewy-backup-${today()}.json`, JSON.stringify(out), 'application/json');
 }
 
 /* ------------------------------------------------------------- requests */
@@ -183,7 +388,7 @@ function viewRequests() {
   const rows = [...S.requests].sort((a, b) => (needsReply(b) - needsReply(a)) || (b.updatedAt || 0) - (a.updatedAt || 0));
   frame('REQUESTS', `<div class="gap"></div>${rows.length ? rows.map((r) => `<div class="row" style="align-items:stretch;gap:8px;margin-bottom:10px"><button class="card prod grow" style="padding:14px;margin:0" data-act="thread" data-id="${esc(r.id)}">
       <div class="row between"><b>${esc(r.title)}</b><span class="chip ${REQ_CHIP[r.status] || ''}">${esc(REQ_LBL[r.status] || r.status)}</span></div>
-      <div class="mut sm">${esc(r.name)} · ${esc(ago(r.updatedAt))}${needsReply(r) ? ' · <span style="color:var(--acc2)">● needs reply</span>' : ''}</div></button>
+      <div class="mut sm">${r.kind === 'preorder' ? '🔔 pre-order · ' : ''}${esc(r.name)} · ${esc(ago(r.updatedAt))}${needsReply(r) ? ' · <span style="color:var(--acc2)">● needs reply</span>' : ''}</div></button>
       <button class="btn bad" style="width:48px" data-act="delreq" data-id="${esc(r.id)}" aria-label="Delete">🗑</button></div>`).join('')
     : '<div class="empty">No custom requests yet. When a customer asks for something, it shows up here.</div>'}`);
 }
@@ -206,12 +411,14 @@ function openThread(id) {
         <span class="row"><a class="btn sm" href="tel:${esc(String(r.phone).replace(/[^\d+]/g, ''))}">📞</a><a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${waNumber(r.phone)}">💬</a></span></div>
       <div class="mono mut sm">${esc(r.phone)}</div>
       ${r.area ? `<div>📍 ${esc(r.area)}</div>` : ''}
+      ${preorderInfo(r)}
       <div style="white-space:pre-wrap;margin-top:6px">${esc(r.desc)}</div>
       ${r.budget ? `<div class="mut sm" style="margin-top:4px">Budget: ${esc(r.budget)}</div>` : ''}
       ${(r.refImages || []).length ? `<div class="thumbs">${r.refImages.map((u) => `<div class="thumb"><img src="${esc(u)}" data-zoom alt=""></div>`).join('')}</div>` : ''}
       <div class="gap-s"></div>
       <div class="two"><select class="in" id="tSt">${Object.keys(REQ_LBL).map((k) => `<option value="${k}"${k === r.status ? ' selected' : ''}>${REQ_LBL[k]}</option>`).join('')}</select>
         <button class="btn" data-a="quote">${q ? `Quote ${eur(q.price)} · edit` : '💶 Send price'}</button></div>
+      <div class="gap-s"></div><button class="btn sm ghost block" data-a="blk">🚫 Block this sender (phone + device)</button>
       <div class="gap-s"></div><button class="btn bad sm block" data-a="delreq">🗑 Delete this request (spam)</button></div>`;
     $('#tSt', s.el).onchange = (e) => B.set('requests', id, { status: e.target.value, updatedAt: Date.now() });
   };
@@ -251,12 +458,17 @@ function openThread(id) {
       if (!confirm('Delete this request and its whole chat for good?')) return;
       try { await deleteRequest(id); s.close(); toast('Deleted'); } catch (err) { console.error(err); toast('Failed: ' + (err.code || err.message)); }
     }
+    if (b.dataset.a === 'blk') {
+      const r = getReq();
+      if (!confirm('Block this sender? They will not be able to send orders, requests or messages.')) return;
+      try { const n = await blockSender({ uid: r.ownerUid, phone: r.phone, label: r.name }); toast(n ? 'Blocked ✓' : 'Nothing to block'); } catch (err) { console.error(err); toast('Failed: ' + (err.code || err.message)); }
+    }
     if (b.dataset.a === 'send') send();
     if (b.dataset.a === 'quote') {
       const r = getReq();
       const q = sheet(`<div class="hd"><div class="ttl">Send price</div><button class="xbtn" data-close>✕</button></div>
         <p class="mut sm">The customer will see the price and an “Approve and order” button. They pay nothing until they approve.</p>
-        <label class="f"><span>Price (${esc(CFG.currency || 'EUR')})</span><input class="in" id="qP" inputmode="decimal" value="${esc(r.quote ? r.quote.price : '')}"></label>
+        <label class="f"><span>Price (${esc(CFG.currency || 'EUR')})</span><input class="in" id="qP" inputmode="decimal" value="${esc(r.quote ? r.quote.price : (r.kind === 'preorder' ? ((S.products.find((x) => x.id === r.pid) || {}).price || '') : ''))}"></label>
         <label class="f"><span>Note (optional)</span><input class="in" id="qN" placeholder="e.g. ready in 3 days" value="${esc(r.quote ? r.quote.note || '' : '')}"></label>
         <div class="gap"></div><button class="btn pri block" data-a="go">Send to customer</button>`);
       q.el.addEventListener('click', async (ev) => {
@@ -286,7 +498,7 @@ function viewOrders() {
       <div class="row between"><b class="mono">${esc(o.no)}</b><span class="chip ${ORDER_CHIP[o.status] || ''}">${esc(ORDER_LBL[o.status] || o.status)}</span></div>
       <div>${esc(o.customer?.name || '—')} · <span class="mono">${eur(o.total)}</span></div>
       <div class="mut sm">${o.items.map((i) => esc(i.name) + ' ×' + i.qty).join(', ')}</div>
-      <div class="chips" style="margin-top:6px"><span class="chip ${o.payStatus === 'paid' ? 'ok' : 'warn'}">${o.payStatus === 'paid' ? 'paid' : o.payStatus === 'deposit' ? 'deposit paid · ' + eur(owed(o)) + ' left' : o.payMethod === 'deposit' ? 'waiting for deposit' : o.payMethod === 'online' ? 'waiting for payment' : 'pay at handoff'}</span><span class="chip">${esc(ago(o.createdAt))}</span></div></button>`).join('')
+      <div class="chips" style="margin-top:6px"><span class="chip ${o.payStatus === 'paid' ? 'ok' : 'warn'}">${o.payStatus === 'paid' ? 'paid' : o.payStatus === 'deposit' ? 'deposit paid · ' + eur(owed(o)) + ' left' : o.payMethod === 'deposit' ? 'waiting for deposit' : o.payMethod === 'online' ? 'waiting for payment' : 'pay at handoff'}</span>${o.tracking ? `<span class="chip blue">📦 ${esc(o.tracking)}</span>` : ''}<span class="chip">${esc(ago(o.createdAt))}</span></div></button>`).join('')
       : '<div class="empty">Nothing here.</div>'}`);
 }
 
@@ -334,8 +546,15 @@ function openOrder(id) {
             ? `<button class="btn ok block" data-a="pay">✅ Rest received from Box Now (${eur(o.balance)}) · fully paid</button><div class="gap-s"></div><button class="btn sm ghost" data-a="unpay">Undo deposit</button>`
             : '<button class="btn ok block" data-a="pay">✅ Mark as paid</button>'}
       <label class="f"><span>What it cost you to make (${esc(CFG.currency || 'EUR')})</span><div class="row"><input class="in grow" id="oC" inputmode="decimal" value="${esc(o.costTotal ?? 0)}"><button class="btn" data-a="cost">Save</button></div></label></div>
+    <div class="h2">Shipping</div>
+    <div class="card">
+      ${o.delivery === 'boxnow' ? `<p class="mut sm" style="margin:0 0 8px">Create the shipment in Box Now's own system. Tap to copy:</p><div class="chips">${[['Name', c.name], ['Phone', c.phone], ['Area', c.area], ['Address / locker', c.address], ...(o.payMethod === 'deposit' ? [['Rest to collect', String(o.balance)]] : [])].map(([l, v]) => (v ? `<button class="pill" data-a="cp" data-v="${esc(v)}">${l}</button>` : '')).join('')}</div><div class="gap-s"></div>` : ''}
+      <label class="f"><span>Tracking number (the customer sees it in “My orders”)</span><div class="row"><input class="in grow" id="oT" maxlength="40" value="${esc(o.tracking || '')}"><button class="btn" data-a="trk">Save</button></div></label>
+      ${o.tracking && c.phone ? `<a class="btn sm block" target="_blank" rel="noopener" href="${esc(trackWa(o))}">💬 Send tracking on WhatsApp</a>` : ''}
+    </div>
     <div class="h2">Status</div>
     <div class="chips">${['new', 'making', 'ready', 'delivered'].map((k) => `<button class="pill${o.status === k ? ' on' : ''}" data-a="st" data-v="${k}">${ORDER_LBL[k]}</button>`).join('')}</div>
+    <div class="gap-s"></div>${o.source === 'manual' ? '' : '<button class="btn sm ghost block" data-a="blk">🚫 Block this customer (phone + device)</button>'}
     <div class="gap"></div><div class="row"><button class="btn bad grow" data-a="cancel">Cancel order</button><button class="btn ghost" data-a="rm">🗑</button></div>`);
   s.el.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-a]');
@@ -346,6 +565,9 @@ function openOrder(id) {
       if (a === 'pay') await B.set('orders', id, { payStatus: 'paid', paidAt: Date.now(), paidAmount: o.total });
       if (a === 'unpay') await B.set('orders', id, { payStatus: 'unpaid', paidAt: null, paidAmount: null });
       if (a === 'cost') { await B.set('orders', id, { costTotal: num($('#oC', s.el).value) }); toast('Saved'); return; }
+      if (a === 'cp') { await copy(b.dataset.v); toast('Copied: ' + b.dataset.v); return; }
+      if (a === 'trk') { await B.set('orders', id, { tracking: $('#oT', s.el).value.trim().slice(0, 40) }); toast('Tracking saved'); return; }
+      if (a === 'blk') { if (!confirm('Block this customer? They will not be able to send orders, requests or messages.')) return; const n = await blockSender({ uid: o.uid, phone: c.phone, label: c.name }); toast(n ? 'Blocked ✓' : 'Nothing to block'); return; }
       if (a === 'st') {
         const v = b.dataset.v;
         const extra = {};
@@ -439,6 +661,22 @@ function viewAudience() {
   const D = S.devices;
   const now = Date.now(), DAY = 86400000;
   const total = D.length;
+  const A = S.accounts;
+  const accIds = new Set(A.map((a) => a.id));
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const T0 = t0.getTime();
+  const aNow = A.filter((a) => now - (a.lastSeen || 0) < 5 * 60000).length;
+  const aToday = A.filter((a) => (a.createdAt || 0) >= T0).length;
+  const aWeek = A.filter((a) => now - (a.createdAt || 0) < 7 * DAY).length;
+  const aActiveToday = A.filter((a) => (a.lastSeen || 0) >= T0).length;
+  const G = D.filter((d) => !accIds.has(d.id));
+  const gToday = G.filter((d) => (d.lastSeen || 0) >= T0).length;
+  const gHour = G.filter((d) => now - (d.lastSeen || 0) < 3600000).length;
+  const gWeek = G.filter((d) => now - (d.lastSeen || 0) < 7 * DAY).length;
+  const gOpens = G.reduce((n, d) => n + (d.visits || 0), 0);
+  const byArea = {};
+  G.forEach((d) => { const k = d.area || 'not chosen yet'; byArea[k] = (byArea[k] || 0) + 1; });
+  const areaRows = Object.entries(byArea).sort((x, y) => y[1] - x[1]).slice(0, 8).map(([k, v]) => `<div class="row between" style="margin:6px 0"><span>📍 ${esc(k)}</span><b class="mono">~${v}</b></div>`).join('');
   const installed = D.filter((d) => d.installed).length;
   const newWeek = D.filter((d) => now - d.firstSeen < 7 * DAY).length;
   const active = D.filter((d) => now - d.lastSeen < 7 * DAY).length;
@@ -461,6 +699,24 @@ function viewAudience() {
   const rowsOf = (o, lbl) => Object.entries(o).sort((x, y) => y[1].n - x[1].n).map(([k, v]) => `<div class="row between" style="margin:6px 0"><span>${esc(lbl(k))}</span><b class="mono">${v.n} <span class="mut sm">· ${v.ord} ordered</span></b></div>`).join('');
   const max = Math.max(1, ...days.map((q) => q.n));
   frame('AUDIENCE', `<div class="gap"></div>
+    <div class="h2" style="margin-top:0">👤 Logged-in accounts · exact numbers</div>
+    <div class="stats">
+      <div class="stat"><div class="l">Accounts</div><div class="v">${A.length}</div></div>
+      <div class="stat"><div class="l">Active now</div><div class="v" style="color:var(--ok)">${aNow}</div><div class="mut sm">last 5 minutes</div></div>
+      <div class="stat"><div class="l">Joined today</div><div class="v">${aToday}</div></div>
+      <div class="stat"><div class="l">Joined this week</div><div class="v">${aWeek}</div></div>
+    </div>
+    <div class="mut sm" style="margin-top:6px">Active today: ${aActiveToday}. Accounts are counted once each, on any phone.</div>
+    <div class="h2">🕶 Visitors without an account · rough numbers</div>
+    <div class="stats">
+      <div class="stat"><div class="l">Opened today</div><div class="v">~${gToday}</div></div>
+      <div class="stat"><div class="l">Opened last hour</div><div class="v">~${gHour}</div></div>
+      <div class="stat"><div class="l">Opened this week</div><div class="v">~${gWeek}</div></div>
+      <div class="stat"><div class="l">Times opened, ever</div><div class="v">~${gOpens}</div></div>
+    </div>
+    <div class="card" style="margin-top:10px"><div class="mut sm" style="margin-bottom:4px">Where they are (the delivery area they picked)</div>${areaRows || '<span class="mut">No areas yet.</span>'}</div>
+    <p class="mut sm">Guests are counted by phone or browser, so these are estimates: one person with two phones counts twice, and clearing the browser makes a new guest.</p>
+    <div class="h2">Everyone together</div>
     <div class="stats">
       <div class="stat"><div class="l">People</div><div class="v">${total}</div></div>
       <div class="stat"><div class="l">Installed</div><div class="v" style="color:var(--ok)">${installed}</div><div class="mut sm">${pct(installed)} of people</div></div>
@@ -511,11 +767,12 @@ function viewSettings() {
     <div class="h2" style="margin-top:0">Shop info</div>
     <label class="f"><span>Shop name</span><input class="in" id="sN" value="${esc(st.shopName || '')}" placeholder="${esc(CFG.shopName || 'GEWY BUILDS')}"></label>
     <label class="f"><span>Short intro (shown on the shop home)</span><textarea class="in" id="sA">${esc(st.about || '')}</textarea></label>
-    <label class="f"><span>Your phone / WhatsApp (with country code, e.g. 3069…)</span><input class="in" id="sPh" inputmode="tel" value="${esc(st.phone || '')}"></label>
+    <label class="f"><span>Your phone / WhatsApp (with country code, e.g. 3069…)</span><input class="in" id="sPh" inputmode="tel" value="${esc(st.phone || '')}" placeholder="${esc(CFG.contactPhone || '')}"></label>
+    <label class="f"><span>About page: your story (shown in the shop's About tab)</span><textarea class="in" id="sAS" rows="5" placeholder="Who you are, why you make these, how it works…">${esc(st.aboutStory || '')}</textarea></label>
     <div class="h2">Business details (shown in Terms and Privacy)</div>
     <label class="f"><span>Business or your full name</span><input class="in" id="sBN" value="${esc(st.businessName || '')}"></label>
     <label class="f"><span>Tax ID (AFM), if you have one</span><input class="in" id="sTX" inputmode="numeric" value="${esc(st.taxId || '')}"></label>
-    <label class="f"><span>Contact email</span><input class="in" id="sEM" type="email" value="${esc(st.contactEmail || '')}"></label>
+    <label class="f"><span>Contact email</span><input class="in" id="sEM" type="email" value="${esc(st.contactEmail || '')}" placeholder="${esc(CFG.contactEmail || '')}"></label>
     <p class="mut sm">The Terms and Privacy pages are a plain-language template. Have an accountant or lawyer read them before you launch.</p>
     <div class="h2">How customers can pay</div>
     <label class="check"><input type="checkbox" id="sH" ${st.payHandoff !== false ? 'checked' : ''}><span><b>Pay at handoff</b><br><span class="mut sm">No payment in the app. They pay you when they receive it.</span></span></label>
@@ -534,7 +791,17 @@ function viewSettings() {
     <label class="f"><span>Deposit is</span><select class="in" id="sDM"><option value="cost"${st.depositMode !== 'percent' ? ' selected' : ''}>What it cost you to make (from each product's cost)</option><option value="percent"${st.depositMode === 'percent' ? ' selected' : ''}>A percentage of the price</option></select></label>
     <label class="f"><span>Percentage (used for "percentage", and for products with no cost set)</span><input class="in" id="sDP" inputmode="numeric" value="${esc(st.depositPct || 30)}"></label>
     <label class="f"><span>Delivery fee added to the order (${esc(CFG.currency || 'EUR')}, 0 = none)</span><input class="in" id="sBF" inputmode="decimal" value="${esc(st.boxFee || 0)}"></label>
+    <div class="h2">Parcel tracking link (optional)</div>
+    <label class="f"><span>Link where customers follow a parcel. Put {id} where the tracking number goes. Empty = they go to Box Now's website.</span><input class="in" id="sTU" inputmode="url" value="${esc(st.trackUrl || '')}" placeholder="https://…{id}"></label>
     <div class="gap"></div><button class="btn pri block" data-act="saveSettings">Save settings</button>
+    <div class="h2">Blocked senders</div>
+    <div class="card" id="blkList">${blockedHtml()}</div>
+    <p class="mut sm">Block someone from an order or a request. A blocked phone number or device cannot send orders, requests or messages. They can still browse.</p>
+    <div class="h2">Backup</div>
+    <button class="btn block" data-act="bkOrders">⬇ Orders (spreadsheet)</button><div class="gap-s"></div>
+    <button class="btn block" data-act="bkCust">⬇ Customers (spreadsheet)</button><div class="gap-s"></div>
+    <button class="btn block" data-act="bkAll">⬇ Everything (full backup file)</button>
+    <p class="mut sm">Do this now and then, so you always have your own copy. The full file holds products, orders, requests, chats, settings and counts (photos too, so it can be big).</p>
     <div class="h2">This phone</div>
     ${B.pushAvailable ? `<button class="btn block" data-act="pushAdmin">${B.pushEnabled('admin') ? '🔔 Alerts are on' : '🔔 Turn on alerts for new orders & messages'}</button><div class="gap-s"></div>` : ''}<button class="btn block" data-act="copyShop">🔗 Copy customer shop link</button>
     <div class="gap-s"></div><button class="btn bad block" data-act="logout">Sign out</button>
@@ -557,6 +824,13 @@ document.addEventListener('click', async (e) => {
     if (a === 'home') { S.view = 'home'; render(); }
     if (a === 'go') { S.view = b.dataset.v; render(); scrollTo(0, 0); }
     if (a === 'editProd') openProductEditor(b.dataset.id);
+    if (a === 'filEdit') openFilament(b.dataset.id);
+    if (a === 'filOn' || a === 'filLow') {
+      const list = filamentsOf(S.settings).map((f) => ({ ...f }));
+      const f = list.find((x) => x.id === b.dataset.id); if (!f) return;
+      if (a === 'filOn') { f.on = f.on === false; if (f.on) f.low = false; } else f.low = !f.low;
+      await saveFilaments(list); toast(a === 'filOn' ? (f.on ? f.name + ' is back in stock ✓' : f.name + ' is OFF · its products show as sold out') : 'Saved');
+    }
     if (a === 'seed') await seedDemo();
     if (a === 'thread') openThread(b.dataset.id);
     if (a === 'delreq') {
@@ -602,8 +876,11 @@ document.addEventListener('click', async (e) => {
     if (a === 'saveSettings') {
       const link = $('#sL').value.trim();
       if (link && !/^https:\/\//i.test(link)) return toast('The payment link must start with https://');
+      const trk = $('#sTU').value.trim();
+      if (trk && !/^https:\/\//i.test(trk)) return toast('The tracking link must start with https://');
       await B.set('settings', 'shop', {
         shopName: $('#sN').value.trim(), about: $('#sA').value.trim(), phone: $('#sPh').value.trim(),
+        aboutStory: $('#sAS').value.trim(), trackUrl: trk,
         businessName: $('#sBN').value.trim(), taxId: $('#sTX').value.trim(), contactEmail: $('#sEM').value.trim(),
         payHandoff: $('#sH').checked, handoffNote: $('#sHN').value.trim(), payOnline: $('#sO').checked,
         payLink: link, payLabel: $('#sLb').value.trim(),
@@ -613,6 +890,11 @@ document.addEventListener('click', async (e) => {
       });
       toast('Settings saved ✓');
     }
+    if (a === 'unblock') { await B.del('blocks', b.dataset.id); toast('Unblocked'); }
+    if (a === 'bkOrders') backupOrders();
+    if (a === 'bkCust') backupCustomers();
+    if (a === 'bkAll') { b.disabled = true; try { await backupAll(); toast('Backup downloaded'); } finally { b.disabled = false; } }
+    if (a === 'verifyAdmin') { await B.adminSendVerification(); toast('Check your inbox and tap the link, then reopen this app', 6000); }
     if (a === 'sendNotify') {
       const title = $('#nT').value.trim();
       if (!title) return toast('Add a title');
@@ -633,7 +915,9 @@ function startData() {
   const known = { orders: null, requests: null };
   S.stops.push(B.watch('products', (r) => { S.products = r; refresh(['home', 'products']); }));
   S.stops.push(B.watch('devices', (r) => { S.devices = r; refresh(['home', 'audience']); }));
-  S.stops.push(B.watchDoc('settings', 'shop', (d) => { S.settings = d || {}; refresh(['home']); }));
+  S.stops.push(B.watch('accounts', (r) => { S.accounts = r; refresh(['home', 'audience']); }));
+  S.stops.push(B.watch('blocks', (r) => { S.blocks = r; drawBlocks(); }));
+  S.stops.push(B.watchDoc('settings', 'shop', (d) => { S.settings = d || {}; refresh(['home', 'filaments', 'products']); }));
   S.stops.push(B.watch('orders', (r) => {
     if (known.orders) r.filter((o) => !known.orders.has(o.id) && o.source !== 'manual').forEach((o) => toast(`📦 New order ${o.no} · ${eur(o.total)}`, 6000));
     known.orders = new Set(r.map((o) => o.id));
@@ -661,6 +945,13 @@ function refresh(views) {
 (async function boot() {
   render();
   try { await B.init({ role: 'admin' }); } catch (err) { console.error(err); $('#app').innerHTML = '<div class="wrap"><div class="empty">Could not start. Check config.js</div></div>'; return; }
-  B.onAdmin((u) => { S.user = u; if (u) startData(); else stopData(); render(); });
+  B.onAdmin((u) => {
+    S.user = u; if (u) startData(); else stopData(); render();
+    // A customer account must never get into the admin screens, even though the database would refuse it anyway.
+    if (u) B.isOwner().then((isOwner) => {
+      if (!isOwner) { toast('This account is not the shop admin.', 5000); B.adminLogout(); return; }
+      B.adminEmailVerified().then((v) => { S.verified = v; refresh(['home']); });
+    });
+  });
   if (B.pushAvailable) B.enablePush('admin', { silent: true });
 })();

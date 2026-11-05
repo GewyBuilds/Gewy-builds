@@ -15,6 +15,9 @@ globalThis.GEWY_CONFIG = {
     appId: "1:452232123435:web:90da259e27c75c0165066e"
   },
   // Bot protection: paste your reCAPTCHA v3 site key here after you set up App Check (see README). Empty = off.
+  // Public contact details shown on the About page and in the Terms (you can also change them in Admin > Settings).
+  contactEmail: 'gewybuilds@gmail.com',
+  contactPhone: '6981092245',
   appCheckKey: '',
   vapidKey: ''
 };

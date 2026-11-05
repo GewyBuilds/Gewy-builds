@@ -3,6 +3,7 @@ import { termsHtml, privacyHtml } from './shared/legal.js';
 import { startWelcome, greeting, welcomeBack } from './shared/welcome.js';
 import { cacheGet, cacheSet } from './shared/cache.js';
 import { HANDOFF_DEF, COURIER_DEF, parseAreas } from './shared/areas.js';
+import { optionsOf, stockOf, lineOut, wasPrice, pctOff } from './shared/stock.js';
 import { $, $$, esc, eur, toast, sheet, ago, copy, fillPayLink, waNumber, getTheme, setTheme, themeIcon } from './shared/ui.js';
 
 const CFG = globalThis.GEWY_CONFIG || {};
@@ -63,6 +64,21 @@ const DICT = {
     install: 'Install the app', installTitle: 'Install on iPhone', installDone: 'Installed!',
     installSteps: '1. Tap the Share button at the bottom of Safari (the square with an arrow).\n2. Scroll down and tap "Add to Home Screen".\n3. Tap "Add". The Gewy Builds icon appears on your home screen.',
     err: 'Something went wrong. Please try again.', sending: 'Sending...',
+    about: 'About', aboutH: 'About us', aboutDefault: 'Gewy Builds is a small 3D printing workshop. Every item is printed to order and handed to you locally, or sent by courier anywhere in Greece. You can also ask for something made just for you.',
+    aboutContact: 'Contact', aboutEmail: 'Email', aboutAreas: 'Where we deliver', aboutHand: 'Hand delivery', aboutCourier: 'Box Now / ACS courier', aboutHow: 'How it works',
+    aboutHowText: '1. Pick a product, or send a custom request.\n2. Choose how you want to get it and how you pay.\n3. I print it and message you when it is ready.',
+    lowStock: 'Low stock', backSoon: 'Back soon', outNote: 'This one is sold out right now. It will be back soon.',
+    share: 'Share', linkCopied: 'Link copied', qty: 'Quantity',
+    preorder: 'Pre-order', preorderHint: 'Want it when it is back? Send a pre-order request. I will confirm the price and when it will be ready. You pay nothing until you approve.', preorderSent: 'Pre-order sent!', needAccount: 'Please log in or create an account to pre-order.',
+    cartOut: 'Out of stock · back soon', cartBack: 'Back in stock!', cartAddAgain: 'Add to cart', cartNothing: 'Nothing available to buy right now.',
+    soldWhile: 'Sorry, these just sold out: {n}. They moved to the bottom of your cart.', priceChanged: 'Some prices changed. Please check your order and try again.', gone: 'Not available anymore',
+    account: 'Account', accOptional: 'An account is optional. You can always order as a guest.', accWhy: 'With an account you see your orders and requests on any phone, and you can pre-order sold-out items.',
+    login: 'Log in', signup: 'Create account', email: 'Email', password: 'Password (6+ characters)', forgot: 'Forgot password?', resetSent: 'If this email has an account, a reset link is on its way.',
+    logout: 'Log out', loggedAs: 'Logged in as', verified: 'Email verified', notVerified: 'Email not verified yet', resend: 'Send the verification email again', verifySent: 'Verification email sent', accDone: 'Account created!',
+    accNudge: 'Create a free account to keep your orders on any phone.', accNew: 'No account yet?', accHave: 'Already have an account?', typeEmail: 'Type your email first.',
+    e_exists: 'This email already has an account. Try logging in.', e_email: 'Please enter a valid email.', e_weak: 'The password needs at least 6 characters.', e_bad: 'Wrong email or password.', e_many: 'Too many tries. Please wait a few minutes.', e_net: 'No connection. Please try again.', e_err: 'Something went wrong. Please try again.',
+    phoneBoxHint: 'Box Now will text your pickup code to this number.', phoneOk: 'I checked: this number is correct and can receive SMS.', phoneNeeded: 'Please confirm your phone number is correct.',
+    waOrder: 'Send order on WhatsApp', msgUs: 'Message us about this order', tracking: 'Tracking number', track: 'Track parcel', copyNo: 'Copy', boxCode: 'Box Now will text the pickup code to {p} when your parcel is in the locker.',
   },
   el: {
     shop: 'Κατάστημα', custom: 'Custom', orders: 'Παραγγελίες', new: 'ΝΕΟ', soldOut: 'Εξαντλήθηκε',
@@ -118,6 +134,21 @@ const DICT = {
     install: 'Εγκατάσταση εφαρμογής', installTitle: 'Εγκατάσταση σε iPhone', installDone: 'Εγκαταστάθηκε!',
     installSteps: '1. Πάτα το κουμπί Κοινοποίηση κάτω στο Safari (το τετράγωνο με το βέλος).\n2. Κάνε κύλιση και πάτα "Προσθήκη στην οθόνη Αφετηρίας".\n3. Πάτα "Προσθήκη". Το εικονίδιο Gewy Builds εμφανίζεται στην αρχική οθόνη σου.',
     err: 'Κάτι πήγε στραβά. Δοκίμασε ξανά.', sending: 'Αποστολή...',
+    about: 'Σχετικά', aboutH: 'Σχετικά με εμάς', aboutDefault: 'Το Gewy Builds είναι ένα μικρό εργαστήριο 3D εκτύπωσης. Κάθε αντικείμενο τυπώνεται κατόπιν παραγγελίας και σου παραδίδεται τοπικά με το χέρι ή με κούριερ οπουδήποτε στην Ελλάδα. Μπορείς επίσης να ζητήσεις κάτι φτιαγμένο ειδικά για σένα.',
+    aboutContact: 'Επικοινωνία', aboutEmail: 'Email', aboutAreas: 'Πού παραδίδουμε', aboutHand: 'Παράδοση με το χέρι', aboutCourier: 'Κούριερ Box Now / ACS', aboutHow: 'Πώς λειτουργεί',
+    aboutHowText: '1. Διάλεξε προϊόν ή στείλε αίτημα custom.\n2. Επίλεξε πώς θες να το παραλάβεις και πώς θα πληρώσεις.\n3. Το τυπώνω και σου στέλνω μήνυμα όταν είναι έτοιμο.',
+    lowStock: 'Λίγα τεμάχια', backSoon: 'Σύντομα ξανά', outNote: 'Αυτό έχει εξαντληθεί αυτή τη στιγμή. Θα επανέλθει σύντομα.',
+    share: 'Κοινοποίηση', linkCopied: 'Ο σύνδεσμος αντιγράφηκε', qty: 'Ποσότητα',
+    preorder: 'Προπαραγγελία', preorderHint: 'Το θες όταν επανέλθει; Στείλε αίτημα προπαραγγελίας. Θα επιβεβαιώσω την τιμή και πότε θα είναι έτοιμο. Δεν πληρώνεις τίποτα μέχρι να εγκρίνεις.', preorderSent: 'Η προπαραγγελία στάλθηκε!', needAccount: 'Συνδέσου ή φτιάξε λογαριασμό για να κάνεις προπαραγγελία.',
+    cartOut: 'Εξαντλήθηκε · σύντομα ξανά', cartBack: 'Ξαναβρέθηκε σε απόθεμα!', cartAddAgain: 'Προσθήκη στο καλάθι', cartNothing: 'Δεν υπάρχει κάτι διαθέσιμο για αγορά αυτή τη στιγμή.',
+    soldWhile: 'Λυπάμαι, μόλις εξαντλήθηκαν: {n}. Μεταφέρθηκαν στο κάτω μέρος του καλαθιού σου.', priceChanged: 'Κάποιες τιμές άλλαξαν. Έλεγξε την παραγγελία σου και δοκίμασε ξανά.', gone: 'Δεν είναι πια διαθέσιμο',
+    account: 'Λογαριασμός', accOptional: 'Ο λογαριασμός είναι προαιρετικός. Μπορείς πάντα να παραγγείλεις ως επισκέπτης.', accWhy: 'Με λογαριασμό βλέπεις τις παραγγελίες και τα αιτήματά σου από οποιοδήποτε κινητό και μπορείς να κάνεις προπαραγγελία σε εξαντλημένα.',
+    login: 'Σύνδεση', signup: 'Δημιουργία λογαριασμού', email: 'Email', password: 'Κωδικός (6+ χαρακτήρες)', forgot: 'Ξέχασες τον κωδικό;', resetSent: 'Αν αυτό το email έχει λογαριασμό, ένας σύνδεσμος επαναφοράς είναι καθ’ οδόν.',
+    logout: 'Αποσύνδεση', loggedAs: 'Συνδεδεμένος ως', verified: 'Το email επιβεβαιώθηκε', notVerified: 'Το email δεν έχει επιβεβαιωθεί ακόμα', resend: 'Αποστολή ξανά του email επιβεβαίωσης', verifySent: 'Το email επιβεβαίωσης στάλθηκε', accDone: 'Ο λογαριασμός δημιουργήθηκε!',
+    accNudge: 'Φτιάξε δωρεάν λογαριασμό για να βλέπεις τις παραγγελίες σου από οποιοδήποτε κινητό.', accNew: 'Δεν έχεις λογαριασμό;', accHave: 'Έχεις ήδη λογαριασμό;', typeEmail: 'Γράψε πρώτα το email σου.',
+    e_exists: 'Αυτό το email έχει ήδη λογαριασμό. Δοκίμασε σύνδεση.', e_email: 'Γράψε ένα έγκυρο email.', e_weak: 'Ο κωδικός θέλει τουλάχιστον 6 χαρακτήρες.', e_bad: 'Λάθος email ή κωδικός.', e_many: 'Πολλές προσπάθειες. Περίμενε λίγα λεπτά.', e_net: 'Δεν υπάρχει σύνδεση. Δοκίμασε ξανά.', e_err: 'Κάτι πήγε στραβά. Δοκίμασε ξανά.',
+    phoneBoxHint: 'Το Box Now θα στείλει τον κωδικό παραλαβής με SMS σε αυτό το νούμερο.', phoneOk: 'Το έλεγξα: το νούμερο είναι σωστό και δέχεται SMS.', phoneNeeded: 'Επιβεβαίωσε ότι το τηλέφωνό σου είναι σωστό.',
+    waOrder: 'Αποστολή παραγγελίας στο WhatsApp', msgUs: 'Μήνυμα για αυτή την παραγγελία', tracking: 'Αριθμός αποστολής', track: 'Παρακολούθηση δέματος', copyNo: 'Αντιγραφή', boxCode: 'Το Box Now θα στείλει τον κωδικό παραλαβής στο {p} όταν το δέμα φτάσει στο locker.',
   },
 };
 let lang = localStorage.getItem('gewy:lang') || ((navigator.language || '').toLowerCase().startsWith('el') ? 'el' : 'en');
@@ -138,8 +169,27 @@ const profile = () => JSON.parse(localStorage.getItem('gewy:profile') || '{}');
 const seenKey = (id) => 'gewy:seen:' + id;
 const isUnread = (r) => r.lastFrom === 'admin' && (r.updatedAt || 0) > +(localStorage.getItem(seenKey(r.id)) || 0);
 const digits = (s) => String(s || '').replace(/\D/g, '');
-const cartCount = () => S.cart.reduce((n, i) => n + i.qty, 0);
-const cartTotal = () => S.cart.reduce((n, i) => n + i.qty * i.price, 0);
+const activeCart = () => S.cart.filter((i) => !i.parked);
+const cartCount = () => activeCart().reduce((n, i) => n + i.qty, 0);
+const cartTotal = () => activeCart().reduce((n, i) => n + i.qty * i.price, 0);
+// The shop's public contact details: what you typed in Admin > Settings, otherwise the ones in config.js.
+const contact = () => ({ email: S.settings.contactEmail || CFG.contactEmail || '', phone: S.settings.phone || CFG.contactPhone || '' });
+const termsData = () => ({ ...S.settings, contactEmail: contact().email, phone: contact().phone });
+// Cart lines that need a stock check are parked (moved to the bottom) while sold out, and keep the shop's current price.
+function syncCart() {
+  if (!S.products.length) return;
+  let ch = false;
+  S.cart.forEach((i) => {
+    if (!i.pid) return;
+    const p = S.products.find((x) => x.id === i.pid);
+    if (!p) { if (!i.parked) { i.parked = true; i.gone = true; ch = true; } return; }
+    if (i.gone) { delete i.gone; ch = true; }
+    if (lineOut(S.products, S.settings, i) && !i.parked) { i.parked = true; ch = true; }
+    if (+p.price !== +i.price) { i.price = +p.price; ch = true; }
+    if ((+p.cost || 0) !== (+i.cost || 0)) { i.cost = +p.cost || 0; ch = true; }
+  });
+  if (ch) saveCart();
+}
 const newCode = () => {
   const a = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   let s = '';
@@ -161,6 +211,7 @@ function shell() {
       <div class="logo grow"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="17" width="18" height="3" rx="1.5" fill="currentColor" opacity=".35"/><rect x="3" y="12" width="18" height="3" rx="1.5" fill="currentColor" opacity=".6"/><rect x="3" y="7" width="18" height="3" rx="1.5" fill="currentColor" opacity=".85"/><rect x="3" y="2" width="18" height="3" rx="1.5" style="fill:var(--acc)"/></svg><span>${logo}</span></div>
       <button class="iconbtn" data-act="theme" id="themeBtn" aria-label="Light or dark">${themeIcon()}</button>
       <button class="iconbtn mono" data-act="lang" aria-label="Language" style="font-size:13px;font-weight:700">${lang === 'el' ? 'EN' : 'ΕΛ'}</button>
+      <button class="iconbtn${B.account() ? ' on' : ''}" data-act="account" aria-label="${esc(t('account'))}" id="accBtn">👤</button>
       ${B.pushAvailable ? '<button class="iconbtn" data-act="bell" aria-label="Notifications" id="bellBtn">🔔</button>' : ''}
       <button class="iconbtn" data-act="cart" aria-label="Cart">🛒<span class="dot hide" id="cartDot"></span></button>
     </div></header>
@@ -169,6 +220,7 @@ function shell() {
       <button data-act="tab" data-tab="shop"><span class="e">🧩</span>${esc(t('shop'))}</button>
       <button data-act="tab" data-tab="custom"><span class="e">✏️</span>${esc(t('custom'))}<i class="dot hide" id="dotCustom"></i></button>
       <button data-act="tab" data-tab="orders"><span class="e">📦</span>${esc(t('orders'))}</button>
+      <button data-act="tab" data-tab="about"><span class="e">ℹ️</span>${esc(t('about'))}</button>
     </div></nav>`;
   document.documentElement.lang = lang;
   renderMain(true);
@@ -181,6 +233,7 @@ function bumpCart() {
 }
 
 function updateChrome() {
+  syncCart();
   const n = cartCount();
   const d = $('#cartDot');
   if (d) { d.textContent = n; d.classList.toggle('hide', !n); }
@@ -194,10 +247,11 @@ function updateChrome() {
 function renderMain(swap) {
   const m = $('#main');
   if (!m) return;
-  document.body.dataset.bg = S.tab === 'shop' ? 'shop' : S.tab === 'custom' ? 'custom' : 'orders';
+  document.body.dataset.bg = S.tab === 'shop' || S.tab === 'about' ? 'shop' : S.tab === 'custom' ? 'custom' : 'orders';
   if (swap) { m.classList.remove('swap'); void m.offsetWidth; m.classList.add('swap'); }
   if (S.tab === 'shop') m.innerHTML = viewShop();
   else if (S.tab === 'custom') m.innerHTML = viewCustom();
+  else if (S.tab === 'about') m.innerHTML = viewAbout();
   else m.innerHTML = viewOrders();
   m.insertAdjacentHTML('beforeend', `<div class="mut sm" style="text-align:center;margin:26px 0 8px"><button class="linkbtn" data-act="legal" data-v="terms">${esc(t('terms'))}</button> · <button class="linkbtn" data-act="legal" data-v="privacy">${esc(t('privacy'))}</button></div>`);
   updateChrome();
@@ -234,13 +288,23 @@ function viewShop() {
   return h;
 }
 
+const priceHtml = (p) => (wasPrice(p) ? `<s class="was">${eur(wasPrice(p))}</s> ` : '') + eur(p.price);
 function prodCard(p) {
   const img = p.images && p.images[0];
   const fresh = Date.now() - (p.createdAt || 0) < 72 * 3600 * 1000;
-  return `<button class="prod" data-act="open" data-id="${esc(p.id)}">
+  const sk = stockOf(p, S.settings);
+  return `<button class="prod${sk.out ? ' oos' : ''}" data-act="open" data-id="${esc(p.id)}">
     <div class="ph">${img ? `<img src="${esc(img)}" alt="${esc(p.name)}" loading="lazy">` : '<div class="noimg">🧩</div>'}</div>
-    ${p.soldOut ? `<span class="chip bad tag">${esc(t('soldOut'))}</span>` : fresh ? `<span class="chip acc tag">${esc(t('new'))}</span>` : ''}
-    <div class="meta"><div class="nm">${esc(p.name)}</div><div class="pr">${eur(p.price)}</div></div></button>`;
+    ${sk.out ? `<span class="chip bad tag">${esc(t('soldOut'))}</span>` : sk.low ? `<span class="chip warn tag">${esc(t('lowStock'))}</span>` : fresh ? `<span class="chip acc tag">${esc(t('new'))}</span>` : ''}
+    ${wasPrice(p) && !sk.out ? `<span class="chip acc off">−${pctOff(p)}%</span>` : ''}
+    <div class="meta"><div class="nm">${esc(p.name)}</div><div class="pr">${priceHtml(p)}</div></div></button>`;
+}
+
+const productLink = (id) => new URL('./', location.href).href + 'index.html?p=' + encodeURIComponent(id) + '&src=share';
+async function shareProduct(p) {
+  const url = productLink(p.id);
+  try { if (navigator.share) { await navigator.share({ title: p.name, text: p.name + ' · ' + eur(p.price), url }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await copy(url); toast('🔗 ' + t('linkCopied')); } catch { toast(url, 6000); }
 }
 
 function openProduct(id) {
@@ -248,54 +312,197 @@ function openProduct(id) {
   if (!p) return;
   B.bumpStage(1);
   let qty = 1;
-  let color = p.colors && p.colors.length ? p.colors[0] : '';
-  const imgs = p.images || [];
-  const s = sheet(`
+  const opts = optionsOf(p);
+  let oi = opts.length ? Math.max(0, stockOf(p, S.settings).opts.findIndex((o) => !o.out)) : -1;
+  const cur = () => (oi >= 0 ? opts[oi] : null);
+  const s = sheet('');
+  const draw = () => {
+    const sk = stockOf(p, S.settings);
+    const o = oi >= 0 ? sk.opts[oi] : null;
+    const out = o ? o.out : sk.out;
+    const low = o ? o.low : sk.low;
+    const c = cur();
+    const imgs = c && c.images && c.images.length ? c.images : p.images || [];
+    s.el.innerHTML = `
     <div class="hd"><div class="ttl">${esc(p.name)}</div><button class="xbtn" data-close>✕</button></div>
     ${imgs.length ? `<div class="gal">${imgs.map((u) => `<img src="${esc(u)}" alt="" data-zoom>`).join('')}</div>` : ''}
-    <div class="row between" style="margin-top:12px"><div class="mono" style="font-size:22px;color:var(--acc2);font-weight:800">${eur(p.price)}</div>${p.soldOut ? `<span class="chip bad">${esc(t('soldOut'))}</span>` : ''}</div>
+    <div class="row between" style="margin-top:12px"><div class="mono" style="font-size:22px;color:var(--acc2);font-weight:800">${priceHtml(p)}${wasPrice(p) ? ` <span class="chip acc">−${pctOff(p)}%</span>` : ''}</div>${out ? `<span class="chip bad">${esc(t('soldOut'))}</span>` : low ? `<span class="chip warn">${esc(t('lowStock'))}</span>` : ''}</div>
     ${p.description ? `<p style="white-space:pre-wrap">${esc(p.description)}</p>` : ''}
-    ${p.colors && p.colors.length ? `<div class="h2">${esc(t('color'))}</div><div class="chips" id="cols">${p.colors.map((c) => `<button class="pill${c === color ? ' on' : ''}" data-a="color" data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}
-    ${p.soldOut ? '' : `<div class="gap"></div>
-    <div class="row"><div class="qty"><button data-a="minus">−</button><span id="q">1</span><button data-a="plus">+</button></div>
+    ${opts.length ? `<div class="h2">${esc(t('color'))}</div><div class="chips" id="cols">${opts.map((x, i) => `<button class="pill${i === oi ? ' on' : ''}${sk.opts[i].out ? ' off' : ''}" data-a="color" data-i="${i}">${esc(x.name)}${sk.opts[i].out ? ' · ' + esc(t('soldOut')) : ''}</button>`).join('')}</div>` : ''}
+    ${out ? `<div class="card" style="margin-top:12px"><b>⏳ ${esc(t('backSoon'))}</b><div class="mut sm" style="margin-top:4px">${esc(t('outNote'))}</div>
+        <div class="gap-s"></div><button class="btn pri block" data-a="pre">🔔 ${esc(t('preorder'))}</button><p class="mut sm" style="margin:8px 0 0">${esc(t('preorderHint'))}</p></div>`
+      : `<div class="gap"></div>
+    <div class="row"><div class="qty"><button data-a="minus">−</button><span id="q">${qty}</span><button data-a="plus">+</button></div>
       <button class="btn grow" data-a="add">${esc(t('add'))}</button></div>
-    <div class="gap-s"></div><button class="btn pri block" data-a="buy">${esc(t('buyNow'))}</button>`}`);
-  const item = () => ({ key: p.id + '|' + color, pid: p.id, name: p.name + (color ? ' · ' + color : ''), price: +p.price || 0, cost: +p.cost || 0, qty, color, image: imgs[0] || '' });
+    <div class="gap-s"></div><button class="btn pri block" data-a="buy">${esc(t('buyNow'))}</button>`}
+    <div class="gap-s"></div><button class="btn ghost block sm" data-a="share">🔗 ${esc(t('share'))}</button>`;
+  };
+  draw();
+  const item = () => {
+    const c = cur();
+    const col = c ? c.name : '';
+    return { key: p.id + '|' + col, pid: p.id, name: p.name + (col ? ' · ' + col : ''), price: +p.price || 0, cost: +p.cost || 0, qty, color: col, image: (c && c.images && c.images[0]) || (p.images || [])[0] || '' };
+  };
   s.el.addEventListener('click', (e) => {
     const b = e.target.closest('[data-a]');
     if (!b) return;
     const a = b.dataset.a;
-    if (a === 'minus') qty = Math.max(1, qty - 1);
-    if (a === 'plus') qty = Math.min(20, qty + 1);
-    if (a === 'color') {
-      color = b.dataset.c;
-      $$('#cols .pill', s.el).forEach((x) => x.classList.toggle('on', x.dataset.c === color));
-    }
-    $('#q', s.el).textContent = qty;
+    if (a === 'minus') { qty = Math.max(1, qty - 1); $('#q', s.el).textContent = qty; }
+    if (a === 'plus') { qty = Math.min(20, qty + 1); $('#q', s.el).textContent = qty; }
+    if (a === 'color') { oi = +b.dataset.i; draw(); }
     if (a === 'add') {
       B.bumpStage(2);
       const it = item();
       const ex = S.cart.find((c) => c.key === it.key);
-      if (ex) ex.qty += it.qty; else S.cart.push(it);
+      if (ex) { ex.qty += it.qty; delete ex.parked; delete ex.gone; } else S.cart.push(it);
       saveCart(); updateChrome(); bumpCart(); toast('✓ ' + t('added')); s.close();
     }
     if (a === 'buy') { B.bumpStage(2); s.close(); openCheckout({ items: [item()] }); }
+    if (a === 'pre') { s.close(); openPreorder(p, cur()); }
+    if (a === 'share') shareProduct(p);
+  });
+}
+
+/* --------------------------------------------------------------- pre-order */
+// A pre-order is a custom request tied to a sold-out product. It needs a (free) account, so I know who is asking.
+function openPreorder(p, o) {
+  if (!B.account()) { toast(t('needAccount'), 4500); return openAccount(); }
+  if (reqToday() >= MAX_REQ_DAY) return toast(t('reqLimit', { n: MAX_REQ_DAY }), 4500);
+  const prof = profile();
+  const label = p.name + (o ? ' · ' + o.name : '');
+  const s = sheet(`<div class="hd"><div class="ttl">${esc(t('preorder'))}</div><button class="xbtn" data-close>✕</button></div>
+    <div class="card"><b>${esc(label)}</b><div class="mono mut sm">${priceHtml(p)}</div></div>
+    <p class="mut sm">${esc(t('preorderHint'))}</p>
+    <div class="two"><label class="f"><span>${esc(t('qty'))}</span><input class="in" id="pQ" type="number" min="1" max="20" value="1" inputmode="numeric"></label>
+    <label class="f"><span>${esc(t('area'))} *</span><select class="in" id="pA">${areaOpts(allAreas(), prof.area)}</select></label></div>
+    <label class="f"><span>${esc(t('yourName'))}</span><input class="in" id="pN" value="${esc(prof.name || '')}"></label>
+    <label class="f"><span>${esc(t('phone'))}</span><input class="in" id="pP" type="tel" value="${esc(prof.phone || '')}"></label>
+    <label class="f"><span>${esc(t('note'))}</span><input class="in" id="pM"></label>
+    ${agreeBox()}
+    <div class="gap"></div><button class="btn pri block" data-a="send">${esc(t('preorder'))}</button>`);
+  s.el.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-a=send]');
+    if (!b) return;
+    const name = $('#pN', s.el).value.trim();
+    const phone = $('#pP', s.el).value.trim();
+    const area = $('#pA', s.el).value;
+    const note = $('#pM', s.el).value.trim();
+    const q = Math.min(20, Math.max(1, parseInt($('#pQ', s.el).value, 10) || 1));
+    if (reqToday() >= MAX_REQ_DAY) return toast(t('reqLimit', { n: MAX_REQ_DAY }), 4500);
+    if (!area) return toast(t('areaNeeded'));
+    if (!$('#agree', s.el).checked) return toast(t('agreeNeeded'));
+    if (!name || digits(phone).length < 6) return toast(t('fillRequired'));
+    b.disabled = true;
+    try {
+      const now = Date.now();
+      const img = (o && o.images && o.images[0]) || (p.images || [])[0] || '';
+      const id = await B.add('requests', {
+        ownerUid: B.uid(), name, phone, area, title: (t('preorder') + ': ' + label).slice(0, 120),
+        desc: `${t('preorder')}: ${label}\n${t('qty')}: ${q}${note ? '\n' + note : ''}`, budget: '', refImages: img ? [img] : [],
+        status: 'new', quote: null, createdAt: now, updatedAt: now, lastFrom: 'customer', kind: 'preorder', pid: p.id, option: (o ? o.name : '').slice(0, 60),
+      });
+      localStorage.setItem('gewy:profile', JSON.stringify({ ...prof, name, phone, area }));
+      localStorage.setItem(seenKey(id), String(now));
+      B.bumpStage(4); B.touchDevice({ visit: false, area });
+      s.close(); toast('✓ ' + t('preorderSent'));
+      S.tab = 'custom'; renderMain(true);
+      openThread(id);
+    } catch (err) {
+      console.error(err); b.disabled = false;
+      if (isBusyErr(err)) { s.close(); openBusy(`${t('preorder')}: ${label} x${q}\n${name} · ${phone}\n${area}`); } else toast(t('err'));
+    }
+  });
+}
+
+/* ----------------------------------------------------------------- account */
+// Optional. Guests can do everything except pre-order. An account keeps orders and requests on any phone.
+function openAccount() {
+  let mode = 'login';
+  const s = sheet('');
+  const fail = (e) => toast(t('e_' + ((e && e.key) || 'err')), 4500);
+  const refreshBtn = () => { const x = $('#accBtn'); if (x) x.classList.toggle('on', !!B.account()); };
+  const draw = () => {
+    const a = B.account();
+    if (a) {
+      s.el.innerHTML = `<div class="hd"><div class="ttl">👤 ${esc(t('account'))}</div><button class="xbtn" data-close>✕</button></div>
+        <div class="card"><div class="mut sm">${esc(t('loggedAs'))}</div><b>${esc(a.email)}</b>
+          <div class="chips" style="margin-top:8px"><span class="chip ${a.verified ? 'ok' : 'warn'}">${esc(a.verified ? t('verified') : t('notVerified'))}</span></div>
+          ${a.verified ? '' : `<div class="gap-s"></div><button class="btn sm block" data-a="resend">${esc(t('resend'))}</button>`}</div>
+        <p class="mut sm">${esc(t('accWhy'))}</p>
+        <button class="btn bad block" data-a="out">${esc(t('logout'))}</button>`;
+      return;
+    }
+    const su = mode === 'signup';
+    s.el.innerHTML = `<div class="hd"><div class="ttl">👤 ${esc(t('account'))}</div><button class="xbtn" data-close>✕</button></div>
+      <p class="mut sm">${esc(t('accOptional'))} ${esc(t('accWhy'))}</p>
+      <div class="chips"><button class="pill${su ? '' : ' on'}" data-a="mode" data-v="login">${esc(t('login'))}</button><button class="pill${su ? ' on' : ''}" data-a="mode" data-v="signup">${esc(t('signup'))}</button></div>
+      <div class="gap-s"></div>
+      <label class="f"><span>${esc(t('email'))}</span><input class="in" id="aE" type="email" autocomplete="email" inputmode="email"></label>
+      <label class="f"><span>${esc(t('password'))}</span><input class="in" id="aP" type="password" autocomplete="${su ? 'new-password' : 'current-password'}"></label>
+      <button class="btn pri block" data-a="go">${esc(su ? t('signup') : t('login'))}</button>
+      ${su ? '' : `<div class="gap-s"></div><button class="linkbtn" data-a="forgot">${esc(t('forgot'))}</button>`}`;
+  };
+  draw();
+  s.el.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-a]');
+    if (!b) return;
+    const a = b.dataset.a;
+    if (a === 'mode') { mode = b.dataset.v; draw(); }
+    if (a === 'go') {
+      const email = $('#aE', s.el).value.trim();
+      const pw = $('#aP', s.el).value;
+      b.disabled = true;
+      try {
+        if (mode === 'signup') {
+          await B.signUp(email, pw);
+          toast('✓ ' + t('accDone'), 4000);
+          B.heartbeat({ force: true, area: profile().area || '' });
+          refreshBtn(); draw();
+          if (S.tab === 'orders') renderMain();
+        } else {
+          await B.signIn(email, pw);
+          toast('✓', 1500);
+          setTimeout(() => location.reload(), 450);
+        }
+      } catch (err) { fail(err); b.disabled = false; }
+    }
+    if (a === 'forgot') {
+      const email = ($('#aE', s.el).value || '').trim();
+      if (!email) return toast(t('typeEmail'));
+      try { await B.resetPassword(email); toast(t('resetSent'), 5000); } catch (err) { fail(err); }
+    }
+    if (a === 'resend') { try { await B.resendVerification(); toast(t('verifySent'), 4000); } catch (err) { fail(err); } }
+    if (a === 'out') { try { await B.signOutAccount(); } catch (err) { console.error(err); } location.reload(); }
   });
 }
 
 /* -------------------------------------------------------------------- cart */
 function openCart() {
+  syncCart();
   const s = sheet('');
-  const draw = () => {
-    s.el.innerHTML = `<div class="hd"><div class="ttl">${esc(t('cart'))}</div><button class="xbtn" data-close>✕</button></div>
-      ${S.cart.length ? S.cart.map((i, n) => `<div class="line">
+  const line = (i, n) => `<div class="line">
           ${i.image ? `<img src="${esc(i.image)}" alt="">` : '<div class="sq"></div>'}
           <div class="grow"><b>${esc(i.name)}</b><div class="mono mut sm">${eur(i.price)} × ${i.qty}</div></div>
           <div class="qty"><button data-a="m" data-n="${n}">−</button><span>${i.qty}</span><button data-a="p" data-n="${n}">+</button></div>
-          <button class="xbtn" data-a="rm" data-n="${n}" aria-label="${esc(t('remove'))}">🗑</button></div>`).join('') +
+          <button class="xbtn" data-a="rm" data-n="${n}" aria-label="${esc(t('remove'))}">🗑</button></div>`;
+  const parkedLine = (i, n) => {
+    const back = !i.gone && !lineOut(S.products, S.settings, i);
+    return `<div class="line oosl">
+          ${i.image ? `<img src="${esc(i.image)}" alt="">` : '<div class="sq"></div>'}
+          <div class="grow"><b>${esc(i.name)}</b><div class="mono mut sm">${eur(i.price)} × ${i.qty}</div>
+            <div style="margin-top:4px">${back ? `<span class="chip ok">${esc(t('cartBack'))}</span>` : `<span class="chip bad">${esc(i.gone ? t('gone') : t('cartOut'))}</span>`}</div></div>
+          ${back ? `<button class="btn sm pri" data-a="un" data-n="${n}">${esc(t('cartAddAgain'))}</button>` : ''}
+          <button class="xbtn" data-a="rm" data-n="${n}" aria-label="${esc(t('remove'))}">🗑</button></div>`;
+  };
+  const draw = () => {
+    const act = S.cart.map((i, n) => [i, n]).filter(([i]) => !i.parked);
+    const park = S.cart.map((i, n) => [i, n]).filter(([i]) => i.parked);
+    s.el.innerHTML = `<div class="hd"><div class="ttl">${esc(t('cart'))}</div><button class="xbtn" data-close>✕</button></div>
+      ${act.length ? act.map(([i, n]) => line(i, n)).join('') +
         `<div class="row between" style="margin:14px 0"><span class="mut">${esc(t('total'))}</span><b class="mono" style="font-size:22px">${eur(cartTotal())}</b></div>
          <button class="btn pri block" data-a="go">${esc(t('checkout'))}</button>`
-        : `<div class="empty">${esc(t('cartEmpty'))}</div>`}`;
+        : `<div class="empty">${esc(S.cart.length ? t('cartNothing') : t('cartEmpty'))}</div>`}
+      ${park.length ? `<div class="h2" style="margin-top:20px">${esc(t('cartOut'))}</div>${park.map(([i, n]) => parkedLine(i, n)).join('')}` : ''}`;
   };
   draw();
   s.el.addEventListener('click', (e) => {
@@ -305,7 +512,8 @@ function openCart() {
     if (b.dataset.a === 'm') S.cart[n].qty = Math.max(1, S.cart[n].qty - 1);
     if (b.dataset.a === 'p') S.cart[n].qty = Math.min(20, S.cart[n].qty + 1);
     if (b.dataset.a === 'rm') S.cart.splice(n, 1);
-    if (b.dataset.a === 'go') { s.close(); openCheckout({ items: S.cart.map((x) => ({ ...x })), fromCart: true }); return; }
+    if (b.dataset.a === 'un') { delete S.cart[n].parked; delete S.cart[n].gone; syncCart(); }
+    if (b.dataset.a === 'go') { s.close(); openCheckout({ items: activeCart().map((x) => ({ ...x })), fromCart: true }); return; }
     saveCart(); updateChrome(); draw();
   });
 }
@@ -347,6 +555,8 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
     <p class="mut sm" id="areaHint" style="margin:-6px 0 8px">${esc(t('areaHint'))}</p>
     <label class="f"><span>${esc(t('yourName'))}</span><input class="in" id="cName" autocomplete="name" value="${esc(prof.name || '')}"></label>
     <label class="f"><span>${esc(t('phone'))}</span><input class="in" id="cPhone" type="tel" autocomplete="tel" value="${esc(prof.phone || '')}" placeholder="${esc(t('phoneHint'))}"></label>
+    <p class="mut sm hide" id="phoneHint" style="margin:-6px 0 8px">📱 ${esc(t('phoneBoxHint'))}</p>
+    <label class="check hide" id="phoneOkW"><input type="checkbox" id="phoneOk"><span class="sm">${esc(t('phoneOk'))}</span></label>
     <div class="h2">${esc(t('how'))}</div>
     <div class="opt on" data-a="dl" data-v="deliver"><i class="rd"></i><div><b>${esc(t('deliver'))}</b><span class="mut sm">${esc(t('deliverDesc'))}</span></div></div>
     <div class="opt" data-a="dl" data-v="meetup"><i class="rd"></i><div><b>${esc(t('meetup'))}</b><span class="mut sm">${esc(t('meetupDesc'))}</span></div></div>
@@ -370,6 +580,8 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
       $$('[data-a=dl]', s.el).forEach((x) => x.classList.toggle('on', x === b));
       $('#addrL', s.el).textContent = delivery === 'deliver' ? t('address') : delivery === 'boxnow' ? t('boxWhere') : t('meetWhere');
       const box = delivery === 'boxnow';
+      $('#phoneHint', s.el).classList.toggle('hide', !box);
+      $('#phoneOkW', s.el).classList.toggle('hide', !box);
       const cur = $('#cArea', s.el).value;
       $('#cArea', s.el).innerHTML = areaOpts(areasFor(delivery), cur);
       $('#areaHint', s.el).textContent = box ? t('areaHintBox') : t('areaHint');
@@ -401,8 +613,17 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
       if (!$('#agree', s.el).checked) return toast(t('agreeNeeded'));
       if (!name || digits(phone).length < 6) return toast(t('fillRequired'));
       if (delivery !== 'meetup' && !address) return toast(t('needAddress'));
+      if (delivery === 'boxnow' && !$('#phoneOk', s.el).checked) return toast(t('phoneNeeded'));
       b.disabled = true;
       try {
+        // Last look at the stock and the prices, so nobody pays for something that just sold out.
+        const chk = await freshCheck(items);
+        if (chk.gone.length || chk.changed) {
+          s.close(); applyFresh(chk);
+          if (chk.gone.length) { toast(t('soldWhile', { n: chk.gone.map((i) => i.name).join(', ') }), 6500); if (fromCart) openCart(); }
+          else { toast(t('priceChanged'), 5000); openCheckout({ items: items.map((i) => ({ ...i, price: chk.price(i) })), requestId, fromCart }); }
+          return;
+        }
         const bx = delivery === 'boxnow' ? boxSplit(items, st) : null;
         const order = {
           uid: B.uid(), no: newCode(),
@@ -416,11 +637,12 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
         };
         const id = await B.add('orders', order);
         localStorage.setItem('gewy:profile', JSON.stringify({ name, phone, address, area }));
+        B.touchDevice({ visit: false, area });
         if (requestId) {
           await B.add('messages', { requestId, ownerUid: B.uid(), from: 'customer', text: `✅ ${t('approve')} — ${order.no}`, at: Date.now() });
           await B.set('requests', requestId, { status: 'approved', updatedAt: Date.now(), lastFrom: 'customer' });
         }
-        if (fromCart) { S.cart = []; saveCart(); updateChrome(); }
+        if (fromCart) { S.cart = S.cart.filter((i) => i.parked); saveCart(); updateChrome(); }
         B.bumpStage(4);
         s.close();
         showPlaced({ ...order, id });
@@ -436,13 +658,39 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
   });
 }
 
+// Reads the newest stock and prices straight from the shop (a few tiny reads), right before an order is saved.
+async function freshCheck(items) {
+  const res = { gone: [], changed: false, st: null, prods: [], price: (i) => i.price };
+  const pidItems = items.filter((i) => i.pid);
+  if (!pidItems.length) return res;
+  try {
+    const st = (await B.getOne('settings', 'shop')) || S.settings;
+    const pids = [...new Set(pidItems.map((i) => i.pid))];
+    const prods = (await Promise.all(pids.map((id) => B.getOne('products', id)))).filter(Boolean);
+    res.st = st; res.prods = prods;
+    pidItems.forEach((i) => {
+      const p = prods.find((x) => x.id === i.pid);
+      if (!p || p.published === false || lineOut(prods, st, i)) res.gone.push(i);
+      else if (Math.abs((+p.price || 0) - (+i.price || 0)) > 0.005) res.changed = true;
+    });
+    res.price = (i) => { const p = prods.find((x) => x.id === i.pid); return p ? +p.price : i.price; };
+  } catch (e) { console.warn('stock check skipped', e.code || e); }
+  return res;
+}
+function applyFresh(chk) {
+  if (!chk.st) return;
+  S.settings = chk.st;
+  chk.prods.forEach((np) => { const k = S.products.findIndex((x) => x.id === np.id); if (k >= 0) S.products[k] = np; });
+  syncCart(); updateChrome(); renderMain();
+}
+
 function payUrl(order) {
   const st = S.settings;
   return st.payLink ? fillPayLink(st.payLink, order.payMethod === 'deposit' ? { ...order, total: order.deposit } : order) : '';
 }
 
 function contactButtons() {
-  const ph = S.settings.phone;
+  const ph = contact().phone;
   if (!ph) return '';
   return `<div class="row" style="margin-top:10px"><a class="btn sm grow" href="tel:${esc(ph.replace(/[^\d+]/g, ''))}">📞 ${esc(t('call'))}</a>
     <a class="btn sm grow" target="_blank" rel="noopener" href="https://wa.me/${waNumber(ph)}">💬 ${esc(t('whatsapp'))}</a></div>`;
@@ -460,6 +708,7 @@ function showPlaced(o) {
         <a class="btn pri block" href="${esc(url)}" rel="noopener">💳 ${esc(t('payNow'))} · ${eur(dep ? o.deposit : o.total)}</a>
         <p class="mut sm" style="margin:10px 0 0">${esc(t('savedInOrders'))}</p></div>`
       : `<div class="card" style="margin-top:12px">${esc(t('handoffThanks'))}</div>`}
+    ${orderWaUrl(o) ? `<a class="btn block" style="margin-top:10px" target="_blank" rel="noopener" href="${esc(orderWaUrl(o))}">💬 ${esc(t('waOrder'))}</a>` : ''}
     ${contactButtons()}
     <div class="gap"></div><button class="btn block" data-close>${esc(t('done'))}</button>`);
   try { navigator.vibrate && navigator.vibrate([12, 40, 12]); } catch { /* ignore */ }
@@ -469,22 +718,64 @@ function showPlaced(o) {
 }
 
 /* ------------------------------------------------------------------ orders */
+const STEPS = ['new', 'making', 'ready', 'delivered'];
+const stepsHtml = (o) => {
+  if (o.status === 'cancelled') return '';
+  const at = STEPS.indexOf(o.status);
+  return `<div class="steps">${STEPS.map((k, i) => `<div class="stp${i < at || (i === at && k === 'delivered') ? ' done' : i === at ? ' now' : ''}"><i>${i < at || (i === at && k === 'delivered') ? '✓' : i + 1}</i><span>${esc(t('st_' + k))}</span></div>`).join('')}</div>`;
+};
+const trackUrl = (o) => (/^https:\/\//i.test(S.settings.trackUrl || '') ? String(S.settings.trackUrl).replaceAll('{id}', encodeURIComponent(o.tracking)) : 'https://boxnow.gr/en');
+function orderWaUrl(o) {
+  const c = contact();
+  if (!c.phone) return '';
+  const cu = o.customer || {};
+  const txt = `${t('orderNo')}: ${o.no}\n${(o.items || []).map((i) => `${i.name} × ${i.qty}`).join('\n')}\n${t('total')}: ${eur(o.total)}\n${cu.name || ''} · ${cu.phone || ''}${cu.area ? '\n' + cu.area : ''}`;
+  return `https://wa.me/${waNumber(c.phone)}?text=${encodeURIComponent(txt)}`;
+}
 function viewOrders() {
   const rows = [...S.orders].sort((a, b) => b.createdAt - a.createdAt);
   if (!rows.length) return `<div class="h1">${esc(t('orders'))}</div><div class="empty">${esc(t('noOrders'))}</div>`;
-  return `<div class="h1">${esc(t('orders'))}</div>` + rows.map((o) => {
+  const nudge = B.account() ? '' : `<div class="banner">👤 <span class="grow">${esc(t('accNudge'))}</span><button class="btn sm pri" data-act="account">${esc(t('signup'))}</button></div><div class="gap"></div>`;
+  return `<div class="h1">${esc(t('orders'))}</div>${nudge}` + rows.map((o) => {
     const dep = o.payMethod === 'deposit';
     const url = (o.payMethod === 'online' ? o.payStatus !== 'paid' : dep && o.payStatus === 'unpaid') && o.status !== 'cancelled' ? payUrl(o) : '';
+    const wa = orderWaUrl(o);
     return `<div class="card">
       <div class="row between"><b class="mono">${esc(o.no)}</b><span class="chip ${ORDER_CHIP[o.status] || ''}">${esc(t('st_' + o.status))}</span></div>
       <div class="mut sm">${esc(ago(o.createdAt, lang))}</div>
+      ${stepsHtml(o)}
       <div style="margin:8px 0">${o.items.map((i) => `${esc(i.name)} × ${i.qty}`).join('<br>')}</div>
       <div class="row between"><b class="mono">${eur(o.total)}</b>
         <span class="chip ${o.payStatus === 'paid' ? 'ok' : 'warn'}">${esc(o.payStatus === 'paid' ? t('paid') : o.payStatus === 'deposit' ? t('depPaid') : o.payMethod === 'handoff' ? t('atHandoff') : t('unpaid'))}</span></div>
       ${dep && o.payStatus !== 'paid' ? `<div class="mut sm" style="margin-top:4px">${esc(t('balLeft'))}: <b class="mono">${eur(o.payStatus === 'deposit' ? o.balance : o.total)}</b></div>` : ''}
+      ${o.tracking ? `<div class="card" style="margin-top:10px;padding:10px"><div class="mut sm">${esc(t('tracking'))}</div>
+        <div class="row between" style="gap:8px;flex-wrap:wrap"><b class="mono">${esc(o.tracking)}</b><span class="row" style="gap:6px"><button class="btn sm" data-act="copyTrack" data-v="${esc(o.tracking)}">${esc(t('copyNo'))}</button><a class="btn sm pri" target="_blank" rel="noopener" href="${esc(trackUrl(o))}">${esc(t('track'))}</a></span></div></div>` : ''}
+      ${o.delivery === 'boxnow' && !['delivered', 'cancelled'].includes(o.status) ? `<p class="mut sm" style="margin:8px 0 0">📱 ${esc(t('boxCode', { p: (o.customer && o.customer.phone) || '' }))}</p>` : ''}
       ${url ? `<a class="btn pri block" style="margin-top:10px" href="${esc(url)}" rel="noopener">💳 ${esc(t('payNow'))} · ${eur(dep ? o.deposit : o.total)}</a>` : ''}
+      ${wa ? `<a class="btn sm block" style="margin-top:8px" target="_blank" rel="noopener" href="${esc(wa)}">💬 ${esc(t('msgUs'))}</a>` : ''}
     </div>`;
   }).join('') + contactButtons();
+}
+
+/* ------------------------------------------------------------------- about */
+function viewAbout() {
+  const st = S.settings, c = contact();
+  const hand = areasFor('deliver'), cour = areasFor('boxnow');
+  const btns = [
+    c.phone ? `<a class="btn sm grow" style="white-space:nowrap" target="_blank" rel="noopener" href="https://wa.me/${waNumber(c.phone)}">💬 ${esc(t('whatsapp'))}</a>` : '',
+    c.phone ? `<a class="btn sm grow" style="white-space:nowrap" href="tel:${esc(String(c.phone).replace(/[^\d+]/g, ''))}">📞 ${esc(t('call'))}</a>` : '',
+    c.email ? `<a class="btn sm grow" style="white-space:nowrap" href="mailto:${esc(c.email)}">✉️ ${esc(t('aboutEmail'))}</a>` : '',
+  ].join('');
+  return `<div class="h1">${esc(t('aboutH'))}</div>
+    <div class="card" style="white-space:pre-wrap">${esc(st.aboutStory || t('aboutDefault'))}</div>
+    <div class="h2">${esc(t('aboutContact'))}</div>
+    <div class="card">${c.phone ? `<div class="mono">📞 ${esc(c.phone)}</div>` : ''}${c.email ? `<div class="mono">✉️ ${esc(c.email)}</div>` : ''}
+      <div class="row" style="flex-wrap:wrap;margin-top:10px">${btns}</div></div>
+    <div class="h2">${esc(t('aboutHow'))}</div>
+    <div class="card" style="white-space:pre-line">${esc(t('aboutHowText'))}</div>
+    <div class="h2">${esc(t('aboutAreas'))}</div>
+    <div class="card"><b>🚚 ${esc(t('aboutHand'))}</b><div class="mut sm">${esc(hand.join(' · '))}</div>
+      ${st.boxnow ? `<div class="sep" style="margin:10px 0"></div><b>📦 ${esc(t('aboutCourier'))}</b><div class="mut sm">${esc(cour.join(' · '))}</div>` : ''}</div>`;
 }
 
 /* ------------------------------------------------------------------ custom */
@@ -503,7 +794,7 @@ const areasFor = (kind) => (kind === 'boxnow' ? parseAreas(S.settings.courierAre
 const allAreas = () => [...new Set([...areasFor('x'), ...areasFor('boxnow')])];
 const areaOpts = (list, cur) => `<option value="">${esc(t('chooseArea'))}</option>` + list.map((a) => `<option value="${esc(a)}"${a === cur ? ' selected' : ''}>${esc(a)}</option>`).join('');
 function openLegal(kind) {
-  const html = kind === 'terms' ? termsHtml(lang, S.settings) : privacyHtml(lang, S.settings);
+  const html = kind === 'terms' ? termsHtml(lang, termsData()) : privacyHtml(lang, termsData());
   sheet(`<div class="hd"><div class="ttl">${esc(t(kind))}</div><button class="xbtn" data-close>✕</button></div><div>${html}</div>
     <div class="gap"></div><button class="btn block" data-close>${esc(t('done'))}</button>`, { full: true });
 }
@@ -677,6 +968,8 @@ document.addEventListener('click', (e) => {
   if (a === 'rename') startOnboarding(['name']);
   if (a === 'theme') { setTheme(getTheme() === 'light' ? 'dark' : 'light'); b.textContent = themeIcon(); }
   if (a === 'thread') openThread(b.dataset.id);
+  if (a === 'account') openAccount();
+  if (a === 'copyTrack') { copy(b.dataset.v); toast('✓ ' + b.dataset.v); }
 });
 globalThis.addEventListener('gewy:push', (e) => toast('🔔 ' + [e.detail.title, e.detail.body].filter(Boolean).join(' — '), 6000));
 
@@ -698,6 +991,7 @@ function startOnboarding(only) {
         localStorage.setItem('gewy:hello', todayKey());
       } catch { /* ignore */ }
       renderMain(true);
+      openDeep();
     },
   });
   return true;
@@ -712,7 +1006,7 @@ function dailyHello() {
 /* ------------------------------------------------------ busy / saved catalogue */
 const isBusyErr = (e) => ['resource-exhausted', 'unavailable', 'deadline-exceeded'].includes(e && e.code);
 function openBusy(message) {
-  const ph = S.settings.phone;
+  const ph = contact().phone;
   const s = sheet(`<div class="hd"><div class="ttl">${esc(t('busyTitle'))}</div><button class="xbtn" data-close>✕</button></div>
     <p class="mut">${esc(t('busyText'))}</p>
     <div class="card sm" style="white-space:pre-wrap">${esc(message)}</div><div class="gap-s"></div>
@@ -721,19 +1015,39 @@ function openBusy(message) {
   s.el.addEventListener('click', (e) => { if (e.target.closest('[data-a=copy]')) { copy(message); toast('✓'); } });
 }
 const CAT_TTL = 10 * 60 * 1000;
+// Products are saved on the phone for 10 minutes, but stock switches (filaments) must show up fast: the settings document is only one tiny read.
+async function refreshSettings() {
+  try {
+    const st = await B.getOne('settings', 'shop');
+    if (!st) return;
+    S.setAt = Date.now(); S.settings = st;
+    const c = await cacheGet('catalog');
+    if (c) { c.settings = st; cacheSet('catalog', c); }
+    syncCart(); updateChrome();
+    if (S.tab === 'shop' || S.tab === 'about') renderMain();
+  } catch (e) { console.warn('settings refresh skipped', e.code || e); }
+}
+// A shared product link (?p=...) opens that product once the shop is ready.
+function openDeep() {
+  if (!S.deep || document.querySelector('.ob') || !S.loaded.products) return;
+  const id = S.deep; S.deep = '';
+  if (S.products.some((x) => x.id === id)) openProduct(id);
+}
 async function loadCatalog(force) {
   const apply = (c) => {
     S.products = (c.products || []).filter((p) => p.published !== false).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     S.settings = c.settings || {};
     S.loaded.products = true;
-    if (S.tab === 'shop') renderMain();
+    syncCart(); updateChrome();
+    if (S.tab === 'shop' || S.tab === 'about') renderMain();
+    openDeep();
   };
   const cached = await cacheGet('catalog');
-  if (cached) { S.catAt = cached.at; apply(cached); if (!force && Date.now() - cached.at < CAT_TTL) return; }
+  if (cached) { S.catAt = cached.at; S.setAt = cached.at; apply(cached); if (!force && Date.now() - cached.at < CAT_TTL) { refreshSettings(); return; } }
   try {
     const [products, settings] = await Promise.all([B.getAll('products'), B.getOne('settings', 'shop')]);
     const c = { at: Date.now(), products, settings: settings || {} };
-    S.catAt = c.at; S.busy = false;
+    S.catAt = c.at; S.setAt = c.at; S.busy = false;
     cacheSet('catalog', c);
     apply(c);
   } catch (err) {
@@ -744,6 +1058,7 @@ async function loadCatalog(force) {
 
 /* -------------------------------------------------------------------- boot */
 (async function boot() {
+  try { S.deep = (new URLSearchParams(location.search).get('p') || '').slice(0, 60); } catch { S.deep = ''; }
   shell();
   if (!startOnboarding()) dailyHello();
   try {
@@ -754,17 +1069,24 @@ async function loadCatalog(force) {
     return;
   }
   const me = B.uid();
+  { const ab = $('#accBtn'); if (ab) ab.classList.toggle('on', !!B.account()); }
   if (B.mode === 'demo') {
     B.watch('products', (rows) => {
       S.loaded.products = true;
       S.products = rows.filter((p) => p.published !== false).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      syncCart(); updateChrome();
       if (S.tab === 'shop') renderMain();
+      openDeep();
     });
-    B.watchDoc('settings', 'shop', (d) => { S.settings = d || {}; if (S.tab === 'shop') renderMain(); });
+    B.watchDoc('settings', 'shop', (d) => { S.settings = d || {}; syncCart(); updateChrome(); if (S.tab === 'shop' || S.tab === 'about') renderMain(); });
   } else {
     loadCatalog();
     // Coming back to the app after a while: refresh the saved copy.
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - (S.catAt || 0) > CAT_TTL) loadCatalog(true); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) return;
+      if (Date.now() - (S.catAt || 0) > CAT_TTL) loadCatalog(true);
+      else if (Date.now() - (S.setAt || S.catAt || 0) > 2 * 60 * 1000) refreshSettings();
+    });
   }
   B.watch('orders', (rows) => { S.orders = rows; if (S.tab === 'orders') renderMain(); }, { where: [['uid', '==', me]] });
   B.watch('requests', (rows) => { S.requests = rows; if (S.tab === 'custom') renderMain(); updateChrome(); if (S.threadRedraw) S.threadRedraw(); }, { where: [['ownerUid', '==', me]] });
@@ -788,5 +1110,9 @@ async function loadCatalog(force) {
     if (link && !localStorage.getItem('gewy:link')) localStorage.setItem('gewy:link', link);
     link = localStorage.getItem('gewy:link') || '';
   } catch { /* ignore */ }
-  if (!counted) B.touchDevice({ installed: isStandalone(), visit: true, src: localStorage.getItem('gewy:src') || '', link });
+  if (!counted) B.touchDevice({ installed: isStandalone(), visit: true, src: localStorage.getItem('gewy:src') || '', link, area: profile().area || '' });
+  // Logged-in customers: tell the admin "active now" at most every 5 minutes while the app is open.
+  B.heartbeat({ force: true, area: profile().area || '' });
+  setInterval(() => { if (!document.hidden) B.heartbeat({ area: profile().area || '' }); }, 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) B.heartbeat({ area: profile().area || '' }); });
 })();
