@@ -19,6 +19,7 @@ const DICT = {
     notifyDenied: 'Notifications are blocked. Allow them in your browser/phone settings.',
     notifyIos: 'On iPhone: tap Share, then "Add to Home Screen". Open the app from your home screen and turn notifications on.',
     notifyThanks: 'Done! You will get a notification for new products.',
+    yourText: 'Your text', maxLetters: 'Max {n} letters', textNeeded: 'Please fill in: {l}',
     add: 'Add to cart', buyNow: 'Buy now', color: 'Color', added: 'Added to cart',
     cart: 'Your cart', cartEmpty: 'Your cart is empty.', total: 'Total', checkout: 'Checkout', remove: 'Remove',
     yourName: 'Your name', phone: 'Phone', phoneHint: 'So I can reach you about delivery',
@@ -89,6 +90,7 @@ const DICT = {
     notifyDenied: 'Οι ειδοποιήσεις είναι μπλοκαρισμένες. Επίτρεψέ τες από τις ρυθμίσεις του κινητού/προγράμματος περιήγησης.',
     notifyIos: 'Σε iPhone: πάτα Κοινοποίηση και μετά "Προσθήκη στην οθόνη Αφετηρίας". Άνοιξε την εφαρμογή από εκεί και ενεργοποίησε τις ειδοποιήσεις.',
     notifyThanks: 'Έτοιμο! Θα λαμβάνεις ειδοποίηση για κάθε νέο προϊόν.',
+    yourText: 'Το κείμενό σου', maxLetters: 'Μέγιστο {n} γράμματα', textNeeded: 'Συμπλήρωσε: {l}',
     add: 'Προσθήκη στο καλάθι', buyNow: 'Αγορά τώρα', color: 'Χρώμα', added: 'Προστέθηκε στο καλάθι',
     cart: 'Το καλάθι σου', cartEmpty: 'Το καλάθι είναι άδειο.', total: 'Σύνολο', checkout: 'Ολοκλήρωση', remove: 'Αφαίρεση',
     yourName: 'Όνομα', phone: 'Τηλέφωνο', phoneHint: 'Για να επικοινωνήσω μαζί σου για την παράδοση',
@@ -312,6 +314,9 @@ function openProduct(id) {
   if (!p) return;
   B.bumpStage(1);
   let qty = 1;
+  let ctext = '';
+  const cu = p.custom && p.custom.on ? p.custom : null;
+  const cmax = cu ? Math.min(40, Math.max(1, +cu.max || 12)) : 0;
   const opts = optionsOf(p);
   let oi = opts.length ? Math.max(0, stockOf(p, S.settings).opts.findIndex((o) => !o.out)) : -1;
   const cur = () => (oi >= 0 ? opts[oi] : null);
@@ -329,6 +334,7 @@ function openProduct(id) {
     <div class="row between" style="margin-top:12px"><div class="mono" style="font-size:22px;color:var(--acc2);font-weight:800">${priceHtml(p)}${wasPrice(p) ? ` <span class="chip acc">−${pctOff(p)}%</span>` : ''}</div>${out ? `<span class="chip bad">${esc(t('soldOut'))}</span>` : low ? `<span class="chip warn">${esc(t('lowStock'))}</span>` : ''}</div>
     ${p.description ? `<p style="white-space:pre-wrap">${esc(p.description)}</p>` : ''}
     ${opts.length ? `<div class="h2">${esc(t('color'))}</div><div class="chips" id="cols">${opts.map((x, i) => `<button class="pill${i === oi ? ' on' : ''}${sk.opts[i].out ? ' off' : ''}" data-a="color" data-i="${i}">${esc(x.name)}${sk.opts[i].out ? ' · ' + esc(t('soldOut')) : ''}</button>`).join('')}</div>` : ''}
+    ${cu && !out ? `<div class="h2">${esc(cu.label || t('yourText'))}${cu.required === false ? '' : ' *'}</div><input class="in" id="cust" maxlength="${cmax}" value="${esc(ctext)}" autocomplete="off"><div class="mut sm" style="margin-top:4px">${esc(t('maxLetters', { n: cmax }))}</div>` : ''}
     ${out ? `<div class="card" style="margin-top:12px"><b>⏳ ${esc(t('backSoon'))}</b><div class="mut sm" style="margin-top:4px">${esc(t('outNote'))}</div>
         <div class="gap-s"></div><button class="btn pri block" data-a="pre">🔔 ${esc(t('preorder'))}</button><p class="mut sm" style="margin:8px 0 0">${esc(t('preorderHint'))}</p></div>`
       : `<div class="gap"></div>
@@ -341,12 +347,16 @@ function openProduct(id) {
   const item = () => {
     const c = cur();
     const col = c ? c.name : '';
-    return { key: p.id + '|' + col, pid: p.id, name: p.name + (col ? ' · ' + col : ''), price: +p.price || 0, cost: +p.cost || 0, qty, color: col, image: (c && c.images && c.images[0]) || (p.images || [])[0] || '' };
+    const tx = cu ? ctext.replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, cmax) : '';
+    return { key: p.id + '|' + col + '|' + tx.toLowerCase(), pid: p.id, custom: tx, name: p.name + (col ? ' · ' + col : '') + (tx ? ' · “' + tx + '”' : ''), price: +p.price || 0, cost: +p.cost || 0, qty, color: col, image: (c && c.images && c.images[0]) || (p.images || [])[0] || '' };
   };
+  s.el.addEventListener('input', (e) => { if (e.target.id === 'cust') ctext = e.target.value; });
+  const needText = () => { if (cu && cu.required !== false && !item().custom) { toast(t('textNeeded', { l: cu.label || t('yourText') }), 4000); const i = $('#cust', s.el); if (i) i.focus(); return true; } return false; };
   s.el.addEventListener('click', (e) => {
     const b = e.target.closest('[data-a]');
     if (!b) return;
     const a = b.dataset.a;
+    if ((a === 'add' || a === 'buy') && needText()) return;
     if (a === 'minus') { qty = Math.max(1, qty - 1); $('#q', s.el).textContent = qty; }
     if (a === 'plus') { qty = Math.min(20, qty + 1); $('#q', s.el).textContent = qty; }
     if (a === 'color') { oi = +b.dataset.i; draw(); }
@@ -627,7 +637,7 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
         const bx = delivery === 'boxnow' ? boxSplit(items, st) : null;
         const order = {
           uid: B.uid(), no: newCode(),
-          items: items.map((i) => ({ id: i.pid || null, name: i.name, price: i.price, cost: i.cost || 0, qty: i.qty, color: i.color || '', image: i.image || '' })),
+          items: items.map((i) => ({ id: i.pid || null, name: i.name, price: i.price, cost: i.cost || 0, qty: i.qty, color: i.color || '', ...(i.custom ? { custom: String(i.custom).slice(0, 40) } : {}), image: i.image || '' })),
           total: bx ? bx.total : Math.round(total * 100) / 100,
           ...(bx ? { fee: bx.fee, deposit: bx.deposit, balance: bx.balance } : {}),
           costTotal: Math.round(items.reduce((n, i) => n + (i.cost || 0) * i.qty, 0) * 100) / 100,

@@ -85,7 +85,7 @@ function viewProducts() {
       return `<button class="card prod" style="padding:10px" data-act="editProd" data-id="${esc(p.id)}"><div class="row">
         <div style="width:64px;height:64px;border-radius:12px;overflow:hidden;background:var(--bg3);flex:none">${p.images && p.images[0] ? `<img src="${esc(p.images[0])}" style="width:100%;height:100%;object-fit:cover" alt="">` : '<div class="noimg">🧩</div>'}</div>
         <div class="grow"><b>${esc(p.name)}</b><div class="mono mut sm">${wasPrice(p) ? `<s>${eur(wasPrice(p))}</s> ` : ''}${eur(p.price)}${margin}</div>
-        <div class="chips" style="margin-top:4px">${p.published === false ? '<span class="chip warn">hidden</span>' : '<span class="chip ok">live</span>'}${chipsStock(p)}${wasPrice(p) ? `<span class="chip acc">−${pctOff(p)}%</span>` : ''}${optionsOf(p).length ? `<span class="chip blue">${optionsOf(p).length} colors</span>` : ''}</div></div></div></button>`;
+        <div class="chips" style="margin-top:4px">${p.published === false ? '<span class="chip warn">hidden</span>' : '<span class="chip ok">live</span>'}${chipsStock(p)}${wasPrice(p) ? `<span class="chip acc">−${pctOff(p)}%</span>` : ''}${optionsOf(p).length ? `<span class="chip blue">${optionsOf(p).length} colors</span>` : ''}${p.custom && p.custom.on ? '<span class="chip acc">custom</span>' : ''}</div></div></div></button>`;
     }).join('') : `<div class="empty">No products yet. Tap “Add product”.</div>${B.mode === 'demo' ? '<div class="gap"></div><button class="btn block" data-act="seed">Load 3 demo products</button>' : ''}`}`);
 }
 
@@ -147,11 +147,19 @@ function openProductEditor(id) {
     <button class="btn block" data-a="addOpt">＋ Add color option</button>
     <label class="f"><span>Category</span><input class="in" id="eCa" value="${esc(p.category || '')}"></label>
     <label class="f"><span>Description</span><textarea class="in" id="eD">${esc(p.description || '')}</textarea></label>
+    <div class="h2">Personalise <span class="mut sm">(optional)</span></div>
+    <label class="check"><input type="checkbox" id="eCu" ${p.custom && p.custom.on ? 'checked' : ''}> <span>Customer types something (name, number…)</span></label>
+    <div id="eCuBox" class="${p.custom && p.custom.on ? '' : 'hide'}">
+      <label class="f"><span>Text shown above the box</span><input class="in" id="eCl" maxlength="80" placeholder="Choose your name" value="${esc((p.custom && p.custom.label) || '')}"></label>
+      <div class="two"><label class="f"><span>Max letters</span><input class="in" id="eCm" inputmode="numeric" value="${esc((p.custom && p.custom.max) || 12)}"></label>
+      <label class="f"><span>Required?</span><select class="in" id="eCr"><option value="1"${!p.custom || p.custom.required !== false ? ' selected' : ''}>Yes, must fill</option><option value="0"${p.custom && p.custom.required === false ? ' selected' : ''}>No, optional</option></select></label></div>
+    </div>
     <label class="check"><input type="checkbox" id="eV" ${p.published !== false ? 'checked' : ''}> <span>Visible in the shop</span></label>
     <label class="check"><input type="checkbox" id="eS" ${p.soldOut ? 'checked' : ''}> <span>Mark as sold out by hand (all colors)</span></label>
     ${B.pushAvailable ? `<label class="check"><input type="checkbox" id="eNo" ${old ? '' : 'checked'}> <span>🔔 Notify customers about this product</span></label>` : ''}
     <div class="gap"></div><button class="btn pri block" data-a="save">${old ? 'Save changes' : 'Publish product'}</button>
     ${old ? '<div class="gap-s"></div><button class="btn bad block" data-a="del">Delete product</button>' : ''}`);
+  $('#eCu', s.el).addEventListener('change', (e) => $('#eCuBox', s.el).classList.toggle('hide', !e.target.checked));
   const draw = () => {
     $('#eTh', s.el).innerHTML = imgs.map((u, i) => `<div class="thumb"><img src="${esc(u)}" alt=""><button data-a="rmI" data-i="${i}">✕</button></div>`).join('') +
       files.map((f, i) => `<div class="thumb"><img src="${URL.createObjectURL(f)}" alt=""><button data-a="rmF" data-i="${i}">✕</button></div>`).join('') +
@@ -247,6 +255,7 @@ function openProductEditor(id) {
         const data = {
           name, price: f.price, listPrice: f.disc ? f.normal : null, cost: num($('#eC', s.el).value), category: $('#eCa', s.el).value.trim(),
           filament: $('#eFil', s.el).value || '', options, colors: options.map((o) => o.name),
+          custom: $('#eCu', s.el).checked ? { on: true, label: $('#eCl', s.el).value.trim().slice(0, 80) || 'Your text', max: Math.min(40, Math.max(1, parseInt($('#eCm', s.el).value, 10) || 12)), required: $('#eCr', s.el).value !== '0' } : null,
           description: $('#eD', s.el).value.trim(), images: urls, published, soldOut: $('#eS', s.el).checked, updatedAt: Date.now(),
         };
         if (JSON.stringify(data).length > 900000) { toast('Too many photos for one product. Remove a few.', 5000); b.disabled = false; b.textContent = old ? 'Save changes' : 'Publish product'; return; }
