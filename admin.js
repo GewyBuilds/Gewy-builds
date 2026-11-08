@@ -503,21 +503,27 @@ function openThread(id) {
 /* ------------------------------------------------- messages to customers */
 const VIA = { whatsapp: 'WhatsApp', viber: 'Viber', both: 'WhatsApp or Viber' };
 const dmy = (iso) => (iso ? iso.split('-').reverse().slice(0, 2).join('/') : '');
+const TPL = {
+  ready: 'Hi {name}! Your order {order} is ready 🎉 I will let you know when I can deliver it.\nΓεια σου {name}! Η παραγγελία {order} είναι έτοιμη 🎉 Θα σε ενημερώσω πότε θα την παραδώσω.',
+  when: 'Hi {name}! Your order {order} will be delivered on {date} at {time}. Please reply to confirm 🙌\nΓεια σου {name}! Η παραγγελία {order} θα παραδοθεί στις {date} και ώρα {time}. Απάντησε για να επιβεβαιώσεις 🙌',
+  thanks: 'Hi {name}! Thank you for your order {order} 💛 Enjoy it, and tell me if anything is wrong.\nΓεια σου {name}! Ευχαριστώ για την παραγγελία {order} 💛 Πες μου αν υπάρχει οποιοδήποτε θέμα.',
+};
+// The same fixed wording every time. You can change it in Settings. {name} {order} {date} {time} {items} {total} fill themselves in.
 function msgText(o, kind, date, time) {
-  const n = (o.customer && o.customer.name || '').split(' ')[0] || '';
-  const when = [dmy(date), time].filter(Boolean);
-  if (kind === 'ready') return `Hi ${n}! Your order ${o.no} is ready 🎉 I will let you know when I can deliver it.\nΓεια σου ${n}! Η παραγγελία ${o.no} είναι έτοιμη 🎉 Θα σε ενημερώσω πότε θα την παραδώσω.`;
-  if (kind === 'thanks') return `Hi ${n}! Thank you for your order ${o.no} 💛 Enjoy it, and tell me if anything is wrong.\nΓεια σου ${n}! Ευχαριστώ για την παραγγελία ${o.no} 💛 Πες μου αν υπάρχει οποιοδήποτε θέμα.`;
-  const en = when.length === 2 ? `on ${when[0]} at ${when[1]}` : when.length ? `on ${when[0]}` : 'soon';
-  const el = when.length === 2 ? `στις ${when[0]} και ώρα ${when[1]}` : when.length ? `στις ${when[0]}` : 'σύντομα';
-  return `Hi ${n}! Your order ${o.no} will be delivered ${en}. Please reply to confirm 🙌\nΓεια σου ${n}! Η παραγγελία ${o.no} θα παραδοθεί ${el}. Απάντησε για να επιβεβαιώσεις 🙌`;
+  const c = o.customer || {};
+  const tpl = ((S.settings.msgTpl || {})[kind] || '').trim() || TPL[kind] || TPL.when;
+  return tpl.replace(/\{(\w+)\}/g, (m, k) => ({
+    name: (c.name || '').split(' ')[0] || '', order: o.no || '', date: dmy(date) || '…', time: time || '…',
+    items: (o.items || []).map((i) => i.name + ' ×' + i.qty).join(', '), total: eur(o.total), phone: c.phone || '', area: c.area || '',
+  }[k] ?? m));
 }
 const waUrl = (o, txt) => `https://wa.me/${waNumber((o.customer || {}).phone)}?text=${encodeURIComponent(txt)}`;
 // Viber cannot start a chat with a ready-written text, so the text is copied and Viber opens on the right person: just paste and send.
 const viberUrl = (o) => 'viber://chat?number=' + encodeURIComponent('+' + waNumber((o.customer || {}).phone));
 function viaButtons(o, attr) {
   const v = (o.customer && o.customer.via) || 'both';
-  return `${v !== 'viber' ? `<button class="btn sm grow" ${attr} data-app="whatsapp">💬 WhatsApp</button>` : ''}${v !== 'whatsapp' ? `<button class="btn sm grow" ${attr} data-app="viber">🟣 Viber</button>` : ''}`;
+  const one = v === 'viber' || v === 'whatsapp';
+  return `${v !== 'viber' ? `<button class="btn ${one ? 'pri ' : ''}sm grow" ${attr} data-app="whatsapp">💬 Send on WhatsApp</button>` : ''}${v !== 'whatsapp' ? `<button class="btn ${one ? 'pri ' : ''}sm grow" ${attr} data-app="viber">🟣 Send on Viber</button>` : ''}`;
 }
 async function sendVia(o, app, txt, when, track = true) {
   if (app === 'viber') { Promise.resolve(copy(txt)).catch(() => {}); toast('Message copied. Paste it in Viber and send.', 4500); window.open(viberUrl(o), '_blank'); }
@@ -581,7 +587,7 @@ function priceWarning(o) {
   return probs.length ? `<div class="card" style="border-color:var(--bad);margin-top:10px"><b style="color:var(--bad)">⚠ Check this order</b>${probs.map((x) => `<div class="sm">${esc(x)}</div>`).join('')}<div class="sm mut">Do not ship until it looks right. You can cancel it.</div></div>` : '';
 }
 
-function openOrder(id) {
+function openOrder(id, focusMsg) {
   const o = S.orders.find((x) => x.id === id);
   if (!o) return;
   const c = o.customer || {};
@@ -631,6 +637,7 @@ function openOrder(id) {
     <div class="chips">${['new', 'making', 'ready', 'delivered'].map((k) => `<button class="pill${o.status === k ? ' on' : ''}" data-a="st" data-v="${k}">${ORDER_LBL[k]}</button>`).join('')}</div>
     <div class="gap-s"></div>${o.source === 'manual' ? '' : '<button class="btn sm ghost block" data-a="blk">🚫 Block this customer (phone + device)</button>'}
     <div class="gap"></div><div class="row"><button class="btn bad grow" data-a="cancel">Cancel order</button><button class="btn ghost" data-a="rm">🗑</button></div>`);
+  if (focusMsg) setTimeout(() => { const m = $('#msgCard', s.el); if (m) m.scrollIntoView({ block: 'center' }); }, 120);
   let mkKind = 'ready';
   s.el.addEventListener('change', (e) => { if (e.target.id === 'mD' || e.target.id === 'mH') $('#mT', s.el).value = msgText(o, 'when', $('#mD', s.el).value, $('#mH', s.el).value); });
   s.el.addEventListener('click', async (e) => {
@@ -660,6 +667,8 @@ function openOrder(id) {
       if (a === 'cancel') { if (!confirm('Cancel this order?')) return; await B.set('orders', id, { status: 'cancelled' }); }
       if (a === 'rm') { if (!confirm('Delete this order record for good?')) return; await B.del('orders', id); }
       s.close();
+      // Just marked Ready: come straight back to the order with the message waiting, one tap to send.
+      if (a === 'st' && b.dataset.v === 'ready') { toast('Marked Ready ✓ Now send them the message', 3500); setTimeout(() => openOrder(id, true), 350); }
     } catch (err) { console.error(err); toast('Failed: ' + (err.code || err.message)); }
   });
 }
@@ -851,6 +860,11 @@ function viewSettings() {
     <label class="f"><span>Shop name</span><input class="in" id="sN" value="${esc(st.shopName || '')}" placeholder="${esc(CFG.shopName || 'GEWY BUILDS')}"></label>
     <label class="f"><span>Short intro (shown on the shop home)</span><textarea class="in" id="sA">${esc(st.about || '')}</textarea></label>
     <label class="f"><span>Your phone / WhatsApp (with country code, e.g. 3069…)</span><input class="in" id="sPh" inputmode="tel" value="${esc(st.phone || '')}" placeholder="${esc(CFG.contactPhone || '')}"></label>
+    <div class="h2">Messages to customers (same text every time)</div>
+    <p class="mut sm" style="margin:0 0 8px">These fill in by themselves: {name} {order} {date} {time} {items} {total}. Leave a box empty to use the standard text.</p>
+    <label class="f"><span>"Ready" message</span><textarea class="in" id="sMR" rows="4" placeholder="${esc(TPL.ready)}">${esc((st.msgTpl || {}).ready || '')}</textarea></label>
+    <label class="f"><span>"Delivery time" message</span><textarea class="in" id="sMW" rows="4" placeholder="${esc(TPL.when)}">${esc((st.msgTpl || {}).when || '')}</textarea></label>
+    <label class="f"><span>"Thank you" message</span><textarea class="in" id="sMT" rows="4" placeholder="${esc(TPL.thanks)}">${esc((st.msgTpl || {}).thanks || '')}</textarea></label>
     <label class="f"><span>About page: your story (shown in the shop's About tab)</span><textarea class="in" id="sAS" rows="5" placeholder="Who you are, why you make these, how it works…">${esc(st.aboutStory || '')}</textarea></label>
     <div class="h2">Business details (shown in Terms and Privacy)</div>
     <label class="f"><span>Business or your full name</span><input class="in" id="sBN" value="${esc(st.businessName || '')}"></label>
@@ -976,6 +990,7 @@ document.addEventListener('click', async (e) => {
       await B.set('settings', 'shop', {
         shopName: $('#sN').value.trim(), about: $('#sA').value.trim(), phone: $('#sPh').value.trim(),
         aboutStory: $('#sAS').value.trim(), trackUrl: trk,
+        msgTpl: { ready: $('#sMR').value.trim().slice(0, 600), when: $('#sMW').value.trim().slice(0, 600), thanks: $('#sMT').value.trim().slice(0, 600) },
         businessName: $('#sBN').value.trim(), taxId: $('#sTX').value.trim(), contactEmail: $('#sEM').value.trim(),
         payHandoff: $('#sH').checked, handoffNote: $('#sHN').value.trim(), payOnline: $('#sO').checked,
         payLink: link, payLabel: $('#sLb').value.trim(),
