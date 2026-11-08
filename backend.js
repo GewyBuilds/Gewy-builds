@@ -72,6 +72,13 @@ export async function adminLogin(email, pw) {
   }
   await AU.signInWithEmailAndPassword(auth, email, pw);
 }
+// Admin sign-in with Google: Google itself then asks for your phone prompt / code (2-Step Verification on your Gmail).
+export async function adminLoginGoogle() {
+  if (LOCAL) return adminLogin('demo@gewybuilds', '');
+  const p = new AU.GoogleAuthProvider();
+  p.setCustomParameters({ prompt: 'select_account' });
+  await AU.signInWithPopup(auth, p);
+}
 export async function adminLogout() {
   if (LOCAL) {
     localStorage.removeItem('gewy:admin');
