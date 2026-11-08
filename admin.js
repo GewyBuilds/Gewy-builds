@@ -7,6 +7,7 @@ const CFG = globalThis.GEWY_CONFIG || {};
 const S = {
   view: 'home', user: null, products: [], requests: [], orders: [], subs: [], devices: [], accounts: [], blocks: [], verified: true, settings: {},
   ofilter: 'active', stops: [], threadRedraw: null,
+  dv: { sel: new Set(), date: '', time: '', area: '' },
 };
 const digits = (s) => String(s || '').replace(/\D/g, '');
 const num = (v) => { const n = parseFloat(String(v).replace(',', '.')); return Number.isFinite(n) ? n : 0; };
@@ -36,7 +37,7 @@ function frame(title, body, { back = true } = {}) {
 function render() {
   document.body.dataset.bg = S.user ? { products: 'shop', filaments: 'shop', requests: 'custom', orders: 'orders' }[S.view] || '' : '';
   if (!S.user) return renderLogin();
-  ({ home: viewHome, products: viewProducts, filaments: viewFilaments, requests: viewRequests, orders: viewOrders, money: viewMoney, audience: viewAudience, notify: viewNotify, settings: viewSettings }[S.view] || viewHome)();
+  ({ home: viewHome, products: viewProducts, filaments: viewFilaments, requests: viewRequests, orders: viewOrders, delivery: viewDelivery, money: viewMoney, audience: viewAudience, notify: viewNotify, settings: viewSettings }[S.view] || viewHome)();
 }
 
 /* ---------------------------------------------------------------- login */
@@ -63,6 +64,7 @@ function viewHome() {
       ${tile('filaments', '🧵', 'FILAMENTS', filStatus(), 0)}
       ${tile('requests', '✏️', 'REQUESTS', openReq ? `${openReq} waiting for you` : 'all answered', openReq)}
       ${tile('orders', '📦', 'ORDERS', `${S.orders.filter((o) => ['new', 'making', 'ready'].includes(o.status)).length} active`, newOrders)}
+      ${tile('delivery', '🚚', 'DELIVERY', `${S.orders.filter((o) => o.status === 'ready').length} ready`, S.orders.filter((o) => o.status === 'ready' && !o.deliveryMsg).length)}
       ${tile('money', '💶', 'MONEY', `${eur(m.profit)} profit`, 0)}
       ${tile('audience', '👥', 'AUDIENCE', `${S.devices.length} phones · ${S.accounts.length} accounts`, 0)}
       ${B.pushAvailable ? tile('notify', '🔔', 'NOTIFY', B.mode === 'demo' ? 'send an alert' : `${S.subs.filter((x) => x.role === 'shop').length} phones`, 0) : ''}
@@ -497,6 +499,57 @@ function openThread(id) {
   $('#tM', s.el).addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 700) { e.preventDefault(); send(); } });
 }
 
+
+/* ------------------------------------------------- messages to customers */
+const VIA = { whatsapp: 'WhatsApp', viber: 'Viber', both: 'WhatsApp or Viber' };
+const dmy = (iso) => (iso ? iso.split('-').reverse().slice(0, 2).join('/') : '');
+function msgText(o, kind, date, time) {
+  const n = (o.customer && o.customer.name || '').split(' ')[0] || '';
+  const when = [dmy(date), time].filter(Boolean);
+  if (kind === 'ready') return `Hi ${n}! Your order ${o.no} is ready 🎉 I will let you know when I can deliver it.\nΓεια σου ${n}! Η παραγγελία ${o.no} είναι έτοιμη 🎉 Θα σε ενημερώσω πότε θα την παραδώσω.`;
+  if (kind === 'thanks') return `Hi ${n}! Thank you for your order ${o.no} 💛 Enjoy it, and tell me if anything is wrong.\nΓεια σου ${n}! Ευχαριστώ για την παραγγελία ${o.no} 💛 Πες μου αν υπάρχει οποιοδήποτε θέμα.`;
+  const en = when.length === 2 ? `on ${when[0]} at ${when[1]}` : when.length ? `on ${when[0]}` : 'soon';
+  const el = when.length === 2 ? `στις ${when[0]} και ώρα ${when[1]}` : when.length ? `στις ${when[0]}` : 'σύντομα';
+  return `Hi ${n}! Your order ${o.no} will be delivered ${en}. Please reply to confirm 🙌\nΓεια σου ${n}! Η παραγγελία ${o.no} θα παραδοθεί ${el}. Απάντησε για να επιβεβαιώσεις 🙌`;
+}
+const waUrl = (o, txt) => `https://wa.me/${waNumber((o.customer || {}).phone)}?text=${encodeURIComponent(txt)}`;
+// Viber cannot start a chat with a ready-written text, so the text is copied and Viber opens on the right person: just paste and send.
+const viberUrl = (o) => 'viber://chat?number=' + encodeURIComponent('+' + waNumber((o.customer || {}).phone));
+function viaButtons(o, attr) {
+  const v = (o.customer && o.customer.via) || 'both';
+  return `${v !== 'viber' ? `<button class="btn sm grow" ${attr} data-app="whatsapp">💬 WhatsApp</button>` : ''}${v !== 'whatsapp' ? `<button class="btn sm grow" ${attr} data-app="viber">🟣 Viber</button>` : ''}`;
+}
+async function sendVia(o, app, txt, when, track = true) {
+  if (app === 'viber') { Promise.resolve(copy(txt)).catch(() => {}); toast('Message copied. Paste it in Viber and send.', 4500); window.open(viberUrl(o), '_blank'); }
+  else window.open(waUrl(o, txt), '_blank');
+  if (track) await B.set('orders', o.id, { deliveryMsg: { at: Date.now(), via: app, when: when || '', confirmed: false } });
+}
+
+/* ------------------------------------------------------------- delivery */
+function viewDelivery() {
+  const D = S.dv;
+  const ready = S.orders.filter((o) => o.status === 'ready').sort((a, b) => a.createdAt - b.createdAt);
+  const areas = [...new Set(ready.map((o) => (o.customer && o.customer.area) || '').filter(Boolean))];
+  const shown = ready.filter((o) => !D.area || (o.customer && o.customer.area) === D.area);
+  const waiting = S.orders.filter((o) => o.deliveryMsg && !o.deliveryMsg.confirmed && o.status !== 'delivered' && o.status !== 'cancelled');
+  const picked = shown.filter((o) => D.sel.has(o.id));
+  frame('DELIVERY', `<div class="gap"></div>
+    <div class="card"><b>1. Pick the day and hour</b>
+      <div class="two" style="margin-top:8px"><label class="f"><span>Date</span><input class="in" type="date" id="dvD" value="${esc(D.date)}"></label>
+      <label class="f"><span>Time</span><input class="in" type="time" id="dvT" value="${esc(D.time)}"></label></div></div>
+    <div class="h2">2. Tick who you are visiting (${ready.length} ready)</div>
+    ${areas.length > 1 ? `<div class="chips"><button class="pill${D.area ? '' : ' on'}" data-act="dvArea" data-v="">All</button>${areas.map((x) => `<button class="pill${D.area === x ? ' on' : ''}" data-act="dvArea" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div><div class="gap-s"></div>` : ''}
+    ${shown.length ? shown.map((o) => { const c = o.customer || {}; return `<label class="card row" style="gap:12px;align-items:center;cursor:pointer"><input type="checkbox" data-act="dvTick" data-id="${esc(o.id)}" ${D.sel.has(o.id) ? 'checked' : ''} style="width:22px;height:22px">
+      <div class="grow"><b>${esc(c.name || '—')}</b> <span class="mono mut">${esc(o.no)}</span><div class="mut sm">${esc(c.area || '')} · ${esc(c.address || '')}</div><div class="mut sm">${(o.items || []).map((i) => esc(i.name) + ' ×' + i.qty).join(', ')}</div></div>
+      <span class="chip ${o.deliveryMsg ? 'ok' : ''}">${o.deliveryMsg ? 'sent' : esc(VIA[c.via] || 'any app')}</span></label>`; }).join('') : '<div class="empty">No order is marked Ready yet.</div>'}
+    ${picked.length ? `<div class="h2">3. Send the message (${D.date || D.time ? dmy(D.date) + ' ' + esc(D.time) : 'no time set yet'})</div>
+      ${picked.map((o) => `<div class="card"><div class="row between"><b>${esc((o.customer || {}).name || '—')}</b><span class="mut sm">${esc(VIA[(o.customer || {}).via] || '')}</span></div>
+        <div class="row" style="margin-top:8px">${viaButtons(o, `data-act="dvSend" data-id="${esc(o.id)}"`)}<a class="btn sm" href="tel:${esc(String((o.customer || {}).phone || '').replace(/[^\d+]/g, ''))}">📞</a></div></div>`).join('')}` : ''}
+    ${waiting.length ? `<div class="h2">Waiting for a reply · call these (${waiting.length})</div>
+      ${waiting.map((o) => { const c = o.customer || {}; return `<div class="card"><div class="row between"><b>${esc(c.name || '—')}</b><span class="mut sm">sent ${esc(ago(o.deliveryMsg.at))} on ${esc(o.deliveryMsg.via)}${o.deliveryMsg.when ? ' · ' + esc(o.deliveryMsg.when) : ''}</span></div>
+        <div class="row" style="margin-top:8px"><a class="btn sm grow" href="tel:${esc(String(c.phone || '').replace(/[^\d+]/g, ''))}">📞 ${esc(c.phone || '')}</a><button class="btn sm ok grow" data-act="dvOk" data-id="${esc(o.id)}">✅ Confirmed</button></div></div>`; }).join('')}` : ''}`);
+}
+
 /* --------------------------------------------------------------- orders */
 function viewOrders() {
   const F = {
@@ -537,7 +590,7 @@ function openOrder(id) {
     <div class="card"><b>${esc(c.name || '—')}</b>
       <div class="row" style="margin:6px 0"><a class="btn sm grow" href="tel:${esc(String(c.phone || '').replace(/[^\d+]/g, ''))}">📞 ${esc(c.phone || '')}</a>
       <a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${waNumber(c.phone)}">💬</a></div>
-      ${c.via ? `<div class="mut sm">Wants delivery news on: <b>${esc({ whatsapp: 'WhatsApp', viber: 'Viber', both: 'WhatsApp or Viber', sms: 'SMS' }[c.via] || c.via)}</b></div>` : ''}
+      ${c.via ? `<div class="mut sm">Wants delivery news on: <b>${esc({ whatsapp: 'WhatsApp', viber: 'Viber', both: 'WhatsApp or Viber' }[c.via] || c.via)}</b></div>` : ''}
       ${c.area ? `<div>📍 ${esc(c.area)}</div>` : ''}
       <div>${o.delivery === 'boxnow' ? '📦 Box Now locker: ' : o.delivery === 'deliver' ? '🚚 Deliver to: ' : '🤝 Meet-up: '}${esc(c.address || '—')}</div>
       ${c.note ? `<div class="mut" style="margin-top:4px">“${esc(c.note)}”</div>` : ''}
@@ -566,10 +619,20 @@ function openOrder(id) {
       <label class="f"><span>Tracking number (the customer sees it in “My orders”)</span><div class="row"><input class="in grow" id="oT" maxlength="40" value="${esc(o.tracking || '')}"><button class="btn" data-a="trk">Save</button></div></label>
       ${o.tracking && c.phone ? `<a class="btn sm block" target="_blank" rel="noopener" href="${esc(trackWa(o))}">💬 Send tracking on WhatsApp</a>` : ''}
     </div>
+    <div class="h2">Message the customer</div>
+    <div class="card" id="msgCard">
+      <div class="mut sm" style="margin-bottom:6px">${c.via ? `They prefer: <b>${esc(VIA[c.via] || c.via)}</b>` : 'No app chosen, use any'}${o.deliveryMsg ? ` · last message ${esc(ago(o.deliveryMsg.at))}` : ''}</div>
+      <div class="chips"><button class="pill on" data-a="mk" data-v="ready">Ready</button><button class="pill" data-a="mk" data-v="when">Delivery time</button><button class="pill" data-a="mk" data-v="thanks">Thank you</button></div>
+      <div id="whenRow" class="two hide" style="margin-top:8px"><label class="f"><span>Date</span><input class="in" type="date" id="mD"></label><label class="f"><span>Time</span><input class="in" type="time" id="mH"></label></div>
+      <textarea class="in" id="mT" rows="5" style="margin-top:8px">${esc(msgText(o, 'ready'))}</textarea>
+      <div class="row" style="margin-top:8px">${viaButtons(o, 'data-a="msg"')}<a class="btn sm" href="tel:${esc(String(c.phone || '').replace(/[^\d+]/g, ''))}">📞</a></div>
+    </div>
     <div class="h2">Status</div>
     <div class="chips">${['new', 'making', 'ready', 'delivered'].map((k) => `<button class="pill${o.status === k ? ' on' : ''}" data-a="st" data-v="${k}">${ORDER_LBL[k]}</button>`).join('')}</div>
     <div class="gap-s"></div>${o.source === 'manual' ? '' : '<button class="btn sm ghost block" data-a="blk">🚫 Block this customer (phone + device)</button>'}
     <div class="gap"></div><div class="row"><button class="btn bad grow" data-a="cancel">Cancel order</button><button class="btn ghost" data-a="rm">🗑</button></div>`);
+  let mkKind = 'ready';
+  s.el.addEventListener('change', (e) => { if (e.target.id === 'mD' || e.target.id === 'mH') $('#mT', s.el).value = msgText(o, 'when', $('#mD', s.el).value, $('#mH', s.el).value); });
   s.el.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-a]');
     if (!b) return;
@@ -579,6 +642,12 @@ function openOrder(id) {
       if (a === 'pay') await B.set('orders', id, { payStatus: 'paid', paidAt: Date.now(), paidAmount: o.total });
       if (a === 'unpay') await B.set('orders', id, { payStatus: 'unpaid', paidAt: null, paidAmount: null });
       if (a === 'cost') { await B.set('orders', id, { costTotal: num($('#oC', s.el).value) }); toast('Saved'); return; }
+      if (a === 'mk') {
+        $$('[data-a=mk]', s.el).forEach((x) => x.classList.toggle('on', x === b));
+        $('#whenRow', s.el).classList.toggle('hide', b.dataset.v !== 'when');
+        $('#mT', s.el).value = msgText(o, b.dataset.v, $('#mD', s.el).value, $('#mH', s.el).value); mkKind = b.dataset.v; return;
+      }
+      if (a === 'msg') { const when = [dmy($('#mD', s.el).value), $('#mH', s.el).value].filter(Boolean).join(' '); await sendVia(o, b.dataset.app, $('#mT', s.el).value, when, mkKind === 'when'); return; }
       if (a === 'cp') { await copy(b.dataset.v); toast('Copied: ' + b.dataset.v); return; }
       if (a === 'trk') { await B.set('orders', id, { tracking: $('#oT', s.el).value.trim().slice(0, 40) }); toast('Tracking saved'); return; }
       if (a === 'blk') { if (!confirm('Block this customer? They will not be able to send orders, requests or messages.')) return; const n = await blockSender({ uid: o.uid, phone: c.phone, label: c.name }); toast(n ? 'Blocked ✓' : 'Nothing to block'); return; }
@@ -823,6 +892,10 @@ function viewSettings() {
 }
 
 /* --------------------------------------------------------------- events */
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'dvD') S.dv.date = e.target.value;
+  if (e.target.id === 'dvT') S.dv.time = e.target.value;
+});
 document.addEventListener('click', async (e) => {
   const z = e.target.closest('img[data-zoom]');
   if (z) { sheet(`<img src="${esc(z.src)}" alt="" style="width:100%;border-radius:14px"><div class="gap-s"></div><button class="btn block" data-close>✕</button>`); return; }
@@ -853,6 +926,14 @@ document.addEventListener('click', async (e) => {
     }
     if (a === 'order') openOrder(b.dataset.id);
     if (a === 'ofilter') { S.ofilter = b.dataset.v; render(); }
+    if (a === 'dvArea') { S.dv.area = b.dataset.v; render(); }
+    if (a === 'dvTick') { b.checked ? S.dv.sel.add(b.dataset.id) : S.dv.sel.delete(b.dataset.id); render(); return; }
+    if (a === 'dvSend') {
+      const o = S.orders.find((x) => x.id === b.dataset.id); if (!o) return;
+      if (!S.dv.date) return toast('Pick the date first (step 1)', 3500);
+      await sendVia(o, b.dataset.app, msgText(o, 'when', S.dv.date, S.dv.time), [dmy(S.dv.date), S.dv.time].filter(Boolean).join(' '));
+    }
+    if (a === 'dvOk') { const o = S.orders.find((x) => x.id === b.dataset.id); if (o) await B.set('orders', o.id, { deliveryMsg: { ...o.deliveryMsg, confirmed: true } }); }
     if (a === 'manual') openManualSale();
     if (a === 'csv') downloadCsv();
     if (a === 'logout') await B.adminLogout();
@@ -935,7 +1016,7 @@ function startData() {
   S.stops.push(B.watch('orders', (r) => {
     if (known.orders) r.filter((o) => !known.orders.has(o.id) && o.source !== 'manual').forEach((o) => toast(`📦 New order ${o.no} · ${eur(o.total)}`, 6000));
     known.orders = new Set(r.map((o) => o.id));
-    S.orders = r; refresh(['home', 'orders', 'money']);
+    S.orders = r; refresh(['home', 'orders', 'money', 'delivery']);
   }));
   S.stops.push(B.watch('requests', (r) => {
     if (known.requests) {

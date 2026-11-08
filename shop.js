@@ -550,7 +550,7 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
   let total = items.reduce((n, i) => n + i.price * i.qty, 0);
   const itemsTotal = total;
   const prof = profile();
-  let via = ['whatsapp', 'viber', 'both', 'sms'].includes(prof.via) ? prof.via : 'whatsapp';
+  let via = ['whatsapp', 'viber', 'both'].includes(prof.via) ? prof.via : 'whatsapp';
   const canOnline = st.payOnline !== false && !!st.payLink;
   const canHandoff = st.payHandoff !== false || !canOnline;
   let pay = canHandoff ? 'handoff' : 'online';
@@ -564,22 +564,22 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
       <div class="grow"><b>${esc(i.name)}</b><div class="mono mut sm">× ${i.qty}</div></div><b class="mono">${eur(i.price * i.qty)}</b></div>`).join('')}
     <div class="row between" style="margin:10px 0 4px"><span class="mut">${esc(t('total'))}</span><b class="mono" style="font-size:22px" id="totalV">${eur(total)}</b></div>
     <div class="card hide" id="boxSum"></div>
-    <label class="f"><span>${esc(t('area'))} *</span><select class="in" id="cArea">${areaOpts(areasFor('deliver'), prof.area)}</select></label>
+    <label class="f"><span class="cl"><i class="ci" style="background:#2f7de1">📍</i>${esc(t('area'))} *</span><select class="in" id="cArea">${areaOpts(areasFor('deliver'), prof.area)}</select></label>
     <p class="mut sm" id="areaHint" style="margin:-6px 0 8px">${esc(t('areaHint'))}</p>
-    <label class="f"><span>${esc(t('yourName'))}</span><input class="in" id="cName" autocomplete="name" value="${esc(prof.name || '')}"></label>
-    <label class="f"><span>${esc(t('phone'))}</span><input class="in" id="cPhone" type="tel" autocomplete="tel" value="${esc(prof.phone || '')}" placeholder="${esc(t('phoneHint'))}"></label>
-    <div class="h2">${esc(t('via'))}</div>
-    <div class="chips" id="viaRow">${[['whatsapp', 'viaWa'], ['viber', 'viaViber'], ['both', 'viaBoth'], ['sms', 'viaSms']].map(([v, k]) => `<button type="button" class="pill${via === v ? ' on' : ''}" data-a="via" data-v="${v}">${esc(t(k))}</button>`).join('')}</div>
+    <label class="f"><span class="cl"><i class="ci" style="background:#22a866">👤</i>${esc(t('yourName'))}</span><input class="in" id="cName" autocomplete="name" value="${esc(prof.name || '')}"></label>
+    <label class="f"><span class="cl"><i class="ci" style="background:#f0731e">📞</i>${esc(t('phone'))}</span><input class="in" id="cPhone" type="tel" autocomplete="tel" value="${esc(prof.phone || '')}" placeholder="${esc(t('phoneHint'))}"></label>
+    <div class="h2 ch"><i class="ci" style="background:#8a5cf0">💬</i>${esc(t('via'))}</div>
+    <div class="chips" id="viaRow">${[['whatsapp', 'viaWa'], ['viber', 'viaViber'], ['both', 'viaBoth']].map(([v, k]) => `<button type="button" class="pill${via === v ? ' on' : ''}" data-a="via" data-v="${v}">${esc(t(k))}</button>`).join('')}</div>
     <p class="mut sm" style="margin:6px 0 8px">${esc(t('viaHint'))}</p>
     <p class="mut sm hide" id="phoneHint" style="margin:-6px 0 8px">📱 ${esc(t('phoneBoxHint'))}</p>
     <label class="check hide" id="phoneOkW"><input type="checkbox" id="phoneOk"><span class="sm">${esc(t('phoneOk'))}</span></label>
-    <div class="h2">${esc(t('how'))}</div>
+    <div class="h2 ch"><i class="ci" style="background:#d9a210">🚚</i>${esc(t('how'))}</div>
     <div class="opt on" data-a="dl" data-v="deliver"><i class="rd"></i><div><b>${esc(t('deliver'))}</b><span class="mut sm">${esc(t('deliverDesc'))}</span></div></div>
     <div class="opt" data-a="dl" data-v="meetup"><i class="rd"></i><div><b>${esc(t('meetup'))}</b><span class="mut sm">${esc(t('meetupDesc'))}</span></div></div>
     ${boxOn ? `<div class="opt" data-a="dl" data-v="boxnow"><i class="rd"></i><div><b>📦 ${esc(t('boxnow'))}</b><span class="mut sm">${esc(t('boxnowDesc'))}</span></div></div>` : ''}
-    <label class="f"><span id="addrL">${esc(t('address'))}</span><input class="in" id="cAddr" autocomplete="street-address" value="${esc(prof.address || '')}"></label>
-    <label class="f"><span>${esc(t('note'))}</span><input class="in" id="cNote"></label>
-    <div id="paySec"><div class="h2">${esc(t('payHow'))}</div>
+    <label class="f"><span class="cl" id="addrW"><i class="ci" style="background:#d9486b">🏠</i><b id="addrL">${esc(t('address'))}</b></span><input class="in" id="cAddr" autocomplete="street-address" value="${esc(prof.address || '')}"></label>
+    <label class="f"><span class="cl"><i class="ci" style="background:#5b6b82">📝</i>${esc(t('note'))}</span><input class="in" id="cNote"></label>
+    <div id="paySec"><div class="h2 ch"><i class="ci" style="background:#22a866">💳</i>${esc(t('payHow'))}</div>
     ${canHandoff ? `<div class="opt${pay === 'handoff' ? ' on' : ''}" data-a="pay" data-v="handoff"><i class="rd"></i><div><b>${esc(t('payHandoff'))}</b><span class="mut sm">${esc(st.handoffNote || t('payHandoffDesc'))}</span></div></div>` : ''}
     ${canOnline ? `<div class="opt${pay === 'online' ? ' on' : ''}" data-a="pay" data-v="online"><i class="rd"></i><div><b>${esc(t('payOnline'))}</b><span class="mut sm">${esc(t('payOnlineDesc', { label }))}</span></div></div>` : ''}</div>
     ${agreeBox()}
@@ -1077,6 +1077,14 @@ async function loadCatalog(force) {
     if (!cached) { S.loaded.products = true; S.busy = true; if (S.tab === 'shop') renderMain(); }
   }
 }
+
+(() => {
+  const st = document.createElement('style');
+  st.textContent = '.cl{display:flex!important;align-items:center;gap:8px;font:700 14px/1.2 var(--sans)!important;color:var(--txt)!important;text-transform:none!important;letter-spacing:0!important;margin-bottom:7px!important}'
+    + '.cl b{font-weight:700}.h2.ch{display:flex;align-items:center;gap:8px;font:700 14px/1.2 var(--sans);color:var(--txt);text-transform:none;letter-spacing:0}'
+    + '.ci{font-style:normal;width:26px;height:26px;border-radius:8px;display:inline-grid;place-items:center;font-size:14px;flex:none;box-shadow:0 2px 6px rgba(0,0,0,.25)}';
+  document.head.appendChild(st);
+})();
 
 /* -------------------------------------------------------------------- boot */
 (async function boot() {
