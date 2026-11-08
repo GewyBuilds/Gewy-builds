@@ -537,6 +537,7 @@ function openOrder(id) {
     <div class="card"><b>${esc(c.name || '—')}</b>
       <div class="row" style="margin:6px 0"><a class="btn sm grow" href="tel:${esc(String(c.phone || '').replace(/[^\d+]/g, ''))}">📞 ${esc(c.phone || '')}</a>
       <a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${waNumber(c.phone)}">💬</a></div>
+      ${c.via ? `<div class="mut sm">Wants delivery news on: <b>${esc({ whatsapp: 'WhatsApp', viber: 'Viber', both: 'WhatsApp or Viber', sms: 'SMS' }[c.via] || c.via)}</b></div>` : ''}
       ${c.area ? `<div>📍 ${esc(c.area)}</div>` : ''}
       <div>${o.delivery === 'boxnow' ? '📦 Box Now locker: ' : o.delivery === 'deliver' ? '🚚 Deliver to: ' : '🤝 Meet-up: '}${esc(c.address || '—')}</div>
       ${c.note ? `<div class="mut" style="margin-top:4px">“${esc(c.note)}”</div>` : ''}

@@ -22,6 +22,7 @@ const DICT = {
     yourText: 'Your text', maxLetters: 'Max {n} letters', textNeeded: 'Please fill in: {l}',
     add: 'Add to cart', buyNow: 'Buy now', color: 'Color', added: 'Added to cart',
     cart: 'Your cart', cartEmpty: 'Your cart is empty.', total: 'Total', checkout: 'Checkout', remove: 'Remove',
+    via: 'Tell me about delivery on', viaWa: 'WhatsApp', viaViber: 'Viber', viaBoth: 'Both', viaSms: 'SMS', viaHint: 'We message you only about your delivery, on the app you pick. Saved for next time.',
     yourName: 'Your name', phone: 'Phone', phoneHint: 'So I can reach you about delivery',
     how: 'How do you want to get it?', deliver: 'Deliver to me', deliverDesc: 'I bring it to you.',
     meetup: 'Meet up / pick up', meetupDesc: 'We agree on a spot.',
@@ -93,6 +94,7 @@ const DICT = {
     yourText: 'Το κείμενό σου', maxLetters: 'Μέγιστο {n} γράμματα', textNeeded: 'Συμπλήρωσε: {l}',
     add: 'Προσθήκη στο καλάθι', buyNow: 'Αγορά τώρα', color: 'Χρώμα', added: 'Προστέθηκε στο καλάθι',
     cart: 'Το καλάθι σου', cartEmpty: 'Το καλάθι είναι άδειο.', total: 'Σύνολο', checkout: 'Ολοκλήρωση', remove: 'Αφαίρεση',
+    via: 'Ενημέρωσέ με για την παράδοση στο', viaWa: 'WhatsApp', viaViber: 'Viber', viaBoth: 'Και τα δύο', viaSms: 'SMS', viaHint: 'Θα σου στείλουμε μήνυμα μόνο για την παράδοση, στην εφαρμογή που διαλέγεις. Αποθηκεύεται για την επόμενη φορά.',
     yourName: 'Όνομα', phone: 'Τηλέφωνο', phoneHint: 'Για να επικοινωνήσω μαζί σου για την παράδοση',
     how: 'Πώς θες να το παραλάβεις;', deliver: 'Παράδοση σε μένα', deliverDesc: 'Θα στο φέρω εγώ.',
     meetup: 'Συνάντηση / παραλαβή', meetupDesc: 'Συμφωνούμε ένα σημείο.',
@@ -548,6 +550,7 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
   let total = items.reduce((n, i) => n + i.price * i.qty, 0);
   const itemsTotal = total;
   const prof = profile();
+  let via = ['whatsapp', 'viber', 'both', 'sms'].includes(prof.via) ? prof.via : 'whatsapp';
   const canOnline = st.payOnline !== false && !!st.payLink;
   const canHandoff = st.payHandoff !== false || !canOnline;
   let pay = canHandoff ? 'handoff' : 'online';
@@ -565,6 +568,9 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
     <p class="mut sm" id="areaHint" style="margin:-6px 0 8px">${esc(t('areaHint'))}</p>
     <label class="f"><span>${esc(t('yourName'))}</span><input class="in" id="cName" autocomplete="name" value="${esc(prof.name || '')}"></label>
     <label class="f"><span>${esc(t('phone'))}</span><input class="in" id="cPhone" type="tel" autocomplete="tel" value="${esc(prof.phone || '')}" placeholder="${esc(t('phoneHint'))}"></label>
+    <div class="h2">${esc(t('via'))}</div>
+    <div class="chips" id="viaRow">${[['whatsapp', 'viaWa'], ['viber', 'viaViber'], ['both', 'viaBoth'], ['sms', 'viaSms']].map(([v, k]) => `<button type="button" class="pill${via === v ? ' on' : ''}" data-a="via" data-v="${v}">${esc(t(k))}</button>`).join('')}</div>
+    <p class="mut sm" style="margin:6px 0 8px">${esc(t('viaHint'))}</p>
     <p class="mut sm hide" id="phoneHint" style="margin:-6px 0 8px">📱 ${esc(t('phoneBoxHint'))}</p>
     <label class="check hide" id="phoneOkW"><input type="checkbox" id="phoneOk"><span class="sm">${esc(t('phoneOk'))}</span></label>
     <div class="h2">${esc(t('how'))}</div>
@@ -609,6 +615,10 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
       $('#totalV', s.el).textContent = eur(total);
       $('#placeBtn', s.el).textContent = `${t('placeOrder')} · ${eur(total)}`;
     }
+    if (a === 'via') {
+      via = b.dataset.v;
+      $$('[data-a=via]', s.el).forEach((x) => x.classList.toggle('on', x === b));
+    }
     if (a === 'pay') {
       pay = b.dataset.v;
       $$('[data-a=pay]', s.el).forEach((x) => x.classList.toggle('on', x === b));
@@ -641,12 +651,12 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
           total: bx ? bx.total : Math.round(total * 100) / 100,
           ...(bx ? { fee: bx.fee, deposit: bx.deposit, balance: bx.balance } : {}),
           costTotal: Math.round(items.reduce((n, i) => n + (i.cost || 0) * i.qty, 0) * 100) / 100,
-          customer: { name, phone, address, note, area },
+          customer: { name, phone, address, note, area, via },
           delivery, payMethod: bx ? 'deposit' : pay, payStatus: 'unpaid', status: 'new',
           requestId, source: 'shop', createdAt: Date.now(),
         };
         const id = await B.add('orders', order);
-        localStorage.setItem('gewy:profile', JSON.stringify({ name, phone, address, area }));
+        localStorage.setItem('gewy:profile', JSON.stringify({ name, phone, address, area, via }));
         B.touchDevice({ visit: false, area });
         if (requestId) {
           await B.add('messages', { requestId, ownerUid: B.uid(), from: 'customer', text: `✅ ${t('approve')} — ${order.no}`, at: Date.now() });
