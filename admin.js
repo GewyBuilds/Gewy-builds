@@ -119,6 +119,9 @@ function filStatus() {
 }
 const r2 = (n) => Math.round(n * 100) / 100;
 
+// Tells every shop app that the product list changed, so they reload it right away instead of waiting for their saved copy to expire.
+const bumpCat = () => B.set('settings', 'shop', { catRev: Date.now() }).catch((e) => console.warn('catRev', e));
+
 function openProductEditor(id) {
   const old = S.products.find((p) => p.id === id);
   const p = old || { name: '', price: '', listPrice: 0, cost: '', category: '', colors: [], options: [], filament: '', description: '', images: [], published: true, soldOut: false };
@@ -231,7 +234,7 @@ function openProductEditor(id) {
     if (a === 'rmOF') { opts[+b.dataset.i].files.splice(+b.dataset.j, 1); drawOpts(); }
     if (a === 'del') {
       if (!confirm('Delete this product for good?')) return;
-      await B.del('products', id); s.close(); toast('Deleted');
+      await B.del('products', id); await bumpCat(); s.close(); toast('Deleted');
     }
     if (a === 'save') {
       const name = $('#eN', s.el).value.trim();
@@ -262,6 +265,7 @@ function openProductEditor(id) {
         let pid = id;
         if (old) await B.set('products', id, data);
         else pid = await B.add('products', { ...data, createdAt: Date.now() });
+        await bumpCat();
         if ($('#eNo', s.el) && $('#eNo', s.el).checked && published && !data.soldOut) {
           await B.add('broadcasts', { title: (old ? 'Update: ' : 'New: ') + name, body: `${eur(data.price)}${data.description ? ' · ' + data.description.slice(0, 80) : ''}`, productId: pid, at: Date.now() });
           toast('Saved · customers notified 🔔');

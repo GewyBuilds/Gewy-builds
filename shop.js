@@ -1032,6 +1032,8 @@ async function refreshSettings() {
     if (!st) return;
     S.setAt = Date.now(); S.settings = st;
     const c = await cacheGet('catalog');
+    // The admin stamps catRev whenever a product is saved, hidden or deleted: if our saved copy is older, load the products again now.
+    if (c && (st.catRev || 0) > (c.rev || 0)) { loadCatalog(true); return; }
     if (c) { c.settings = st; cacheSet('catalog', c); }
     syncCart(); updateChrome();
     if (S.tab === 'shop' || S.tab === 'about') renderMain();
@@ -1056,7 +1058,7 @@ async function loadCatalog(force) {
   if (cached) { S.catAt = cached.at; S.setAt = cached.at; apply(cached); if (!force && Date.now() - cached.at < CAT_TTL) { refreshSettings(); return; } }
   try {
     const [products, settings] = await Promise.all([B.getAll('products'), B.getOne('settings', 'shop')]);
-    const c = { at: Date.now(), products, settings: settings || {} };
+    const c = { at: Date.now(), rev: (settings && settings.catRev) || 0, products, settings: settings || {} };
     S.catAt = c.at; S.setAt = c.at; S.busy = false;
     cacheSet('catalog', c);
     apply(c);
@@ -1095,7 +1097,7 @@ async function loadCatalog(force) {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) return;
       if (Date.now() - (S.catAt || 0) > CAT_TTL) loadCatalog(true);
-      else if (Date.now() - (S.setAt || S.catAt || 0) > 2 * 60 * 1000) refreshSettings();
+      else if (Date.now() - (S.setAt || S.catAt || 0) > 20 * 1000) refreshSettings();
     });
   }
   B.watch('orders', (rows) => { S.orders = rows; if (S.tab === 'orders') renderMain(); }, { where: [['uid', '==', me]] });
