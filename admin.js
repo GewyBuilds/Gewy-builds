@@ -539,7 +539,7 @@ function openOrder(id) {
       <div class="mut sm" style="margin-top:6px">${esc(fmtDay(o.createdAt))}${o.source === 'manual' ? ' · manual sale' : ''}</div></div>
     ${priceWarning(o)}
     <div class="h2">Items</div>
-    <div class="card">${o.items.map((i) => `<div class="row between"><span>${esc(i.name)} × ${i.qty}</span><b class="mono">${eur(i.price * i.qty)}</b></div>`).join('')}
+    <div class="card">${o.items.map((i) => `<div class="row between"><span>${esc(i.name)} × ${i.qty}${i.custom ? `<br><b style="color:var(--acc2)">✍️ ${esc(i.custom)}</b>` : ''}</span><b class="mono">${eur(i.price * i.qty)}</b></div>`).join('')}
       ${o.fee ? `<div class="row between mut"><span>Delivery fee</span><span class="mono">${eur(o.fee)}</span></div>` : ''}
       <div class="sep"></div><div class="row between"><b>Total</b><b class="mono" style="font-size:20px">${eur(o.total)}</b></div></div>
     <div class="h2">Payment</div>
