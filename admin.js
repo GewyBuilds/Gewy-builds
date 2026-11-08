@@ -46,9 +46,12 @@ function renderLogin() {
     <div class="logo" style="font-size:22px"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="17" width="18" height="3" rx="1.5" fill="currentColor" opacity=".35"/><rect x="3" y="12" width="18" height="3" rx="1.5" fill="currentColor" opacity=".6"/><rect x="3" y="7" width="18" height="3" rx="1.5" fill="currentColor" opacity=".85"/><rect x="3" y="2" width="18" height="3" rx="1.5" style="fill:var(--acc)"/></svg><span>GEWY <b>ADMIN</b></span></div>
     <p class="mut">Sign in to manage your shop.</p>
     ${B.mode === 'demo' ? '<div class="banner demo">🧪 <span><b>DEMO MODE</b> — any email and password works. Data stays in this browser.</span></div>' : ''}
-    <label class="f"><span>Email</span><input class="in" id="lE" type="email" autocomplete="username" inputmode="email"></label>
+    <button class="btn pri block" data-act="loginG">Sign in with Google</button>
+    <p class="mut sm" style="margin:8px 0 0">Google will ask for your phone prompt or code to confirm it is you.</p>
+    <details style="margin-top:22px" ${B.mode === 'demo' ? 'open' : ''}><summary class="mut sm" style="cursor:pointer">Use email and password instead</summary>
+    <label class="f" style="margin-top:10px"><span>Email</span><input class="in" id="lE" type="email" autocomplete="username" inputmode="email"></label>
     <label class="f"><span>Password</span><input class="in" id="lP" type="password" autocomplete="current-password"></label>
-    <div class="gap"></div><button class="btn pri block" data-act="login">Sign in</button></main>`;
+    <div class="gap"></div><button class="btn block" data-act="login">Sign in</button></details></main>`;
 }
 
 /* ----------------------------------------------------------------- home */
@@ -917,6 +920,16 @@ document.addEventListener('click', async (e) => {
   if (!b) return;
   const a = b.dataset.act;
   try {
+    if (a === 'loginG') {
+      b.disabled = true;
+      try { await B.adminLoginGoogle(); }
+      catch (err) {
+        console.error(err);
+        const c = (err && err.code) || '';
+        toast(c === 'auth/popup-blocked' ? 'Your browser blocked the Google window. Allow pop-ups for this page and try again.' : c === 'auth/popup-closed-by-user' || c === 'auth/cancelled-popup-request' ? 'Sign-in cancelled.' : c === 'auth/unauthorized-domain' ? 'Add gewybuilds.github.io to Firebase > Authentication > Settings > Authorized domains.' : c === 'auth/operation-not-allowed' ? 'Turn on Google in Firebase > Authentication > Sign-in method.' : 'Google sign-in failed (' + (c || 'unknown') + ').', 6000);
+        b.disabled = false;
+      }
+    }
     if (a === 'login') {
       b.disabled = true;
       try { await B.adminLogin($('#lE').value.trim(), $('#lP').value); }
