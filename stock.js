@@ -5,6 +5,10 @@
 
 export const filamentsOf = (st) => (st && Array.isArray(st.filaments) ? st.filaments : []);
 export const findFilament = (st, id) => (id ? filamentsOf(st).find((f) => f.id === id) || null : null);
+// A print can use several filaments (a multi-color print). fidsOf gives the list for a product or a color option.
+export const fidsOf = (x) => (x && Array.isArray(x.filaments) && x.filaments.length ? x.filaments : x && x.filament ? [x.filament] : []);
+const allOn = (st, ids) => ids.every((id) => isOn(st, id));
+const anyLow = (st, ids) => ids.some((id) => { const f = findFilament(st, id); return !!(f && f.low && f.on !== false); });
 const isOn = (st, id) => { const f = findFilament(st, id); return !f || f.on !== false; };
 
 // Options of a product. Older products only have a plain list of color names.
@@ -15,18 +19,17 @@ export const optionsOf = (p) => (Array.isArray(p.options) && p.options.length
 // { out, why: 'sold'|'filament'|'', low, opts:[{name,out,low,images}] }
 export function stockOf(p, st) {
   const opts = optionsOf(p).map((o) => {
-    const fid = o.filament || p.filament || '';
-    const f = findFilament(st, fid);
-    return { name: o.name, images: o.images || [], out: !!p.soldOut || !isOn(st, fid), low: !!(f && f.low && f.on !== false) };
+    const ids = fidsOf(o).length ? fidsOf(o) : fidsOf(p);
+    return { name: o.name, images: o.images || [], out: !!p.soldOut || !allOn(st, ids), low: anyLow(st, ids) };
   });
   if (p.soldOut) return { out: true, why: 'sold', low: false, opts };
   if (opts.length) {
     const out = opts.every((o) => o.out);
     return { out, why: out ? 'filament' : '', low: !out && opts.some((o) => !o.out && o.low), opts };
   }
-  const f = findFilament(st, p.filament);
-  const out = !isOn(st, p.filament);
-  return { out, why: out ? 'filament' : '', low: !out && !!(f && f.low), opts };
+  const ids = fidsOf(p);
+  const out = !allOn(st, ids);
+  return { out, why: out ? 'filament' : '', low: !out && anyLow(st, ids), opts };
 }
 
 // Stock of one cart/order line (pid + chosen color name).
