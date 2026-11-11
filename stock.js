@@ -7,6 +7,11 @@ export const filamentsOf = (st) => (st && Array.isArray(st.filaments) ? st.filam
 export const findFilament = (st, id) => (id ? filamentsOf(st).find((f) => f.id === id) || null : null);
 const isOn = (st, id) => { const f = findFilament(st, id); return !f || f.on !== false; };
 
+// Filaments a product uses. New products have p.filaments = [id, ...]; older ones only have p.filament.
+export const filsOf = (p) => (Array.isArray(p.filaments) && p.filaments.length ? p.filaments : (p.filament ? [p.filament] : []));
+// Filaments one color option uses: its own if it has one, otherwise the product's.
+const optFils = (o, p) => (o.filament ? [o.filament] : filsOf(p));
+
 // Options of a product. Older products only have a plain list of color names.
 export const optionsOf = (p) => (Array.isArray(p.options) && p.options.length
   ? p.options
@@ -15,18 +20,18 @@ export const optionsOf = (p) => (Array.isArray(p.options) && p.options.length
 // { out, why: 'sold'|'filament'|'', low, opts:[{name,out,low,images}] }
 export function stockOf(p, st) {
   const opts = optionsOf(p).map((o) => {
-    const fid = o.filament || p.filament || '';
-    const f = findFilament(st, fid);
-    return { name: o.name, images: o.images || [], out: !!p.soldOut || !isOn(st, fid), low: !!(f && f.low && f.on !== false) };
+    const ids = optFils(o, p);
+    return { name: o.name, images: o.images || [], out: !!p.soldOut || ids.some((id) => !isOn(st, id)), low: ids.some((id) => { const f = findFilament(st, id); return !!(f && f.low && f.on !== false); }) };
   });
   if (p.soldOut) return { out: true, why: 'sold', low: false, opts };
   if (opts.length) {
     const out = opts.every((o) => o.out);
     return { out, why: out ? 'filament' : '', low: !out && opts.some((o) => !o.out && o.low), opts };
   }
-  const f = findFilament(st, p.filament);
-  const out = !isOn(st, p.filament);
-  return { out, why: out ? 'filament' : '', low: !out && !!(f && f.low), opts };
+  const ids = filsOf(p);
+  const out = ids.some((id) => !isOn(st, id));
+  const low = ids.some((id) => { const f = findFilament(st, id); return !!(f && f.low); });
+  return { out, why: out ? 'filament' : '', low: !out && low, opts };
 }
 
 // Stock of one cart/order line (pid + chosen color name).

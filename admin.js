@@ -1,7 +1,7 @@
 import * as B from './shared/backend.js';
 import { HANDOFF_DEF, COURIER_DEF, parseAreas } from './shared/areas.js';
 import { $, $$, esc, eur, toast, sheet, ago, copy, monthKey, fmtDay, waNumber, getTheme, setTheme, themeIcon, rid } from './shared/ui.js';
-import { filamentsOf, optionsOf, stockOf, wasPrice, pctOff } from './shared/stock.js';
+import { filamentsOf, filsOf, optionsOf, stockOf, wasPrice, pctOff } from './shared/stock.js';
 
 const CFG = globalThis.GEWY_CONFIG || {};
 const S = {
@@ -134,6 +134,8 @@ function openProductEditor(id) {
   const files = [];
   const opts = (old ? optionsOf(p) : []).map((o) => ({ name: o.name, filament: o.filament || '', images: [...(o.images || [])], files: [] }));
   const fils = filamentsOf(S.settings);
+  const pfils = filsOf(p).slice();
+  if (!pfils.length) pfils.push('');
   const filOpts = (sel) => '<option value="">— none —</option>' + fils.map((f) => `<option value="${esc(f.id)}"${f.id === sel ? ' selected' : ''}>${esc(f.name)}${f.on === false ? ' (OFF)' : ''}</option>`).join('');
   const hasDisc = !!wasPrice(p);
   const s = sheet(`
@@ -147,7 +149,8 @@ function openProductEditor(id) {
     <label class="f"><span id="eDl">Value</span><input class="in" id="eDv" inputmode="decimal" value="${hasDisc ? esc(p.price) : ''}"></label></div>
     <div class="card" id="ePrev" style="margin-top:8px"></div>
     <div class="h2">Filament</div>
-    <label class="f"><span>Which filament does this product use?</span><select class="in" id="eFil">${filOpts(p.filament || '')}</select></label>
+    <div class="f"><span>Which filaments does this product use?</span><div id="eFils"></div></div>
+    <button class="btn block" data-a="addFil">＋ Add another filament</button>
     ${fils.length ? '' : '<p class="mut sm">Add your filaments first in the FILAMENTS tab, then pick one here.</p>'}
     <div class="h2">Color options <span class="mut sm">(optional)</span></div>
     <p class="mut sm">Leave empty for a one-color product. Add options (green, red, orange…) and each gets its own photos and its own filament, so only that color goes out of stock when its filament is off.</p>
@@ -172,6 +175,9 @@ function openProductEditor(id) {
     $('#eTh', s.el).innerHTML = imgs.map((u, i) => `<div class="thumb"><img src="${esc(u)}" alt=""><button data-a="rmI" data-i="${i}">✕</button></div>`).join('') +
       files.map((f, i) => `<div class="thumb"><img src="${URL.createObjectURL(f)}" alt=""><button data-a="rmF" data-i="${i}">✕</button></div>`).join('') +
       (imgs.length + files.length < B.MAX_PHOTOS ? '<button class="addimg" data-a="pick">＋</button>' : '<span class="mut sm" style="align-self:center">max ' + B.MAX_PHOTOS + ' photos</span>');
+  };
+  const drawFils = () => {
+    $('#eFils', s.el).innerHTML = pfils.map((fid, i) => `<div class="row" style="margin-bottom:6px"><select class="in grow" data-f="pfil" data-i="${i}">${filOpts(fid)}</select>${pfils.length > 1 ? `<button class="xbtn" data-a="rmFil" data-i="${i}" aria-label="Remove">🗑</button>` : ''}</div>`).join('');
   };
   const drawOpts = () => {
     $('#eOpts', s.el).innerHTML = opts.map((o, i) => `<div class="card" style="margin-bottom:8px"><div class="row"><input class="in grow" data-f="name" data-i="${i}" placeholder="Color name, e.g. Red" value="${esc(o.name)}"><button class="xbtn" data-a="rmO" data-i="${i}" aria-label="Remove">🗑</button></div>
@@ -203,7 +209,7 @@ function openProductEditor(id) {
     }
     $('#ePrev', s.el).innerHTML = h;
   };
-  draw(); drawOpts(); preview();
+  draw(); drawFils(); drawOpts(); preview();
   let pickIdx = -1;
   $('#eF', s.el).addEventListener('change', (e) => {
     const room = Math.max(0, B.MAX_PHOTOS - imgs.length - files.length);
@@ -223,6 +229,7 @@ function openProductEditor(id) {
   s.el.addEventListener('change', (e) => {
     const t = e.target;
     if (t.dataset && t.dataset.f === 'fil') opts[+t.dataset.i].filament = t.value;
+    if (t.dataset && t.dataset.f === 'pfil') pfils[+t.dataset.i] = t.value;
     if (t.id === 'eDm') preview();
   });
   s.el.addEventListener('click', async (e) => {
@@ -232,7 +239,9 @@ function openProductEditor(id) {
     if (a === 'pick') $('#eF', s.el).click();
     if (a === 'rmI') { imgs.splice(+b.dataset.i, 1); draw(); }
     if (a === 'rmF') { files.splice(+b.dataset.i, 1); draw(); }
-    if (a === 'addOpt') { opts.push({ name: '', filament: $('#eFil', s.el).value || '', images: [], files: [] }); drawOpts(); }
+    if (a === 'addFil') { pfils.push(''); drawFils(); }
+    if (a === 'rmFil') { pfils.splice(+b.dataset.i, 1); drawFils(); }
+    if (a === 'addOpt') { opts.push({ name: '', filament: '', images: [], files: [] }); drawOpts(); }
     if (a === 'rmO') { opts.splice(+b.dataset.i, 1); drawOpts(); }
     if (a === 'pickO') { pickIdx = +b.dataset.i; $('#eOF', s.el).click(); }
     if (a === 'rmOI') { opts[+b.dataset.i].images.splice(+b.dataset.j, 1); drawOpts(); }
@@ -262,7 +271,7 @@ function openProductEditor(id) {
         const published = $('#eV', s.el).checked;
         const data = {
           name, price: f.price, listPrice: f.disc ? f.normal : null, cost: num($('#eC', s.el).value), category: $('#eCa', s.el).value.trim(),
-          filament: $('#eFil', s.el).value || '', options, colors: options.map((o) => o.name),
+          filaments: [...new Set(pfils.filter(Boolean))], filament: pfils.find(Boolean) || '', options, colors: options.map((o) => o.name),
           custom: $('#eCu', s.el).checked ? { on: true, label: $('#eCl', s.el).value.trim().slice(0, 80) || 'Your text', max: Math.min(40, Math.max(1, parseInt($('#eCm', s.el).value, 10) || 12)), required: $('#eCr', s.el).value !== '0' } : null,
           description: $('#eD', s.el).value.trim(), images: urls, published, soldOut: $('#eS', s.el).checked, updatedAt: Date.now(),
         };
@@ -282,7 +291,7 @@ function openProductEditor(id) {
 }
 
 /* ------------------------------------------------------------- filaments */
-const usesFil = (p, fid) => p.filament === fid || optionsOf(p).some((o) => o.filament === fid);
+const usesFil = (p, fid) => filsOf(p).includes(fid) || optionsOf(p).some((o) => o.filament === fid);
 async function saveFilaments(list) { await B.set('settings', 'shop', { filaments: list, updatedAt: Date.now() }); }
 function viewFilaments() {
   const fs = filamentsOf(S.settings);
