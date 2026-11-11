@@ -5,6 +5,8 @@
 
 export const filamentsOf = (st) => (st && Array.isArray(st.filaments) ? st.filaments : []);
 export const findFilament = (st, id) => (id ? filamentsOf(st).find((f) => f.id === id) || null : null);
+// A product or color can need several filaments (x.filaments). Older data has one (x.filament).
+export const filsOf = (x) => (Array.isArray(x.filaments) && x.filaments.length ? x.filaments : x.filament ? [x.filament] : []);
 const isOn = (st, id) => { const f = findFilament(st, id); return !f || f.on !== false; };
 
 // Options of a product. Older products only have a plain list of color names.
@@ -15,18 +17,17 @@ export const optionsOf = (p) => (Array.isArray(p.options) && p.options.length
 // { out, why: 'sold'|'filament'|'', low, opts:[{name,out,low,images}] }
 export function stockOf(p, st) {
   const opts = optionsOf(p).map((o) => {
-    const fid = o.filament || p.filament || '';
-    const f = findFilament(st, fid);
-    return { name: o.name, images: o.images || [], out: !!p.soldOut || !isOn(st, fid), low: !!(f && f.low && f.on !== false) };
+    const ids = filsOf(o).length ? filsOf(o) : filsOf(p);
+    return { name: o.name, images: o.images || [], out: !!p.soldOut || !ids.every((id) => isOn(st, id)), low: ids.some((id) => { const f = findFilament(st, id); return !!(f && f.low && f.on !== false); }) };
   });
   if (p.soldOut) return { out: true, why: 'sold', low: false, opts };
   if (opts.length) {
     const out = opts.every((o) => o.out);
     return { out, why: out ? 'filament' : '', low: !out && opts.some((o) => !o.out && o.low), opts };
   }
-  const f = findFilament(st, p.filament);
-  const out = !isOn(st, p.filament);
-  return { out, why: out ? 'filament' : '', low: !out && !!(f && f.low), opts };
+  const ids = filsOf(p);
+  const out = !ids.every((id) => isOn(st, id));
+  return { out, why: out ? 'filament' : '', low: !out && ids.some((id) => { const f = findFilament(st, id); return !!(f && f.low); }), opts };
 }
 
 // Stock of one cart/order line (pid + chosen color name).
