@@ -818,7 +818,7 @@ function openLegal(kind) {
   sheet(`<div class="hd"><div class="ttl">${esc(t(kind))}</div><button class="xbtn" data-close>✕</button></div><div>${html}</div>
     <div class="gap"></div><button class="btn block" data-close>${esc(t('done'))}</button>`, { full: true });
 }
-const TERMS_V = '2';
+const TERMS_V = '3';
 const hasAgreed = () => !!localStorage.getItem('gewy:agreed') && localStorage.getItem('gewy:termsv') === TERMS_V;
 const ownBox = () => `<label class="check"><input type="checkbox" id="own"><span class="sm">${esc(t('ownIt'))}</span></label>`;
 const agreeBox = () => `<label class="check"><input type="checkbox" id="agree"${hasAgreed() ? ' checked' : ''}><span class="sm">${esc(t('agree'))} (<button type="button" class="linkbtn" data-act="legal" data-v="terms">${esc(t('terms'))}</button> · <button type="button" class="linkbtn" data-act="legal" data-v="privacy">${esc(t('privacy'))}</button>)</span></label>`;
