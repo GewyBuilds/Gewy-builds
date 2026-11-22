@@ -5,7 +5,7 @@ import { filamentsOf, optionsOf, stockOf, wasPrice, pctOff, fidsOf } from './sha
 
 const CFG = globalThis.GEWY_CONFIG || {};
 const S = {
-  view: 'home', user: null, products: [], requests: [], orders: [], subs: [], devices: [], accounts: [], blocks: [], verified: true, settings: {},
+  view: 'home', user: null, products: [], requests: [], orders: [], subs: [], devices: [], accounts: [], blocks: [], modelLinks: [], verified: true, settings: {},
   ofilter: 'active', stops: [], threadRedraw: null,
   dv: { sel: new Set(), date: '', time: '', area: '' },
 };
@@ -90,7 +90,7 @@ function viewProducts() {
       return `<button class="card prod" style="padding:10px" data-act="editProd" data-id="${esc(p.id)}"><div class="row">
         <div style="width:64px;height:64px;border-radius:12px;overflow:hidden;background:var(--bg3);flex:none">${p.images && p.images[0] ? `<img src="${esc(p.images[0])}" style="width:100%;height:100%;object-fit:cover" alt="">` : '<div class="noimg">🧩</div>'}</div>
         <div class="grow"><b>${esc(p.name)}</b><div class="mono mut sm">${wasPrice(p) ? `<s>${eur(wasPrice(p))}</s> ` : ''}${eur(p.price)}${margin}</div>
-        <div class="chips" style="margin-top:4px">${p.published === false ? '<span class="chip warn">hidden</span>' : '<span class="chip ok">live</span>'}${chipsStock(p)}${wasPrice(p) ? `<span class="chip acc">−${pctOff(p)}%</span>` : ''}${optionsOf(p).length ? `<span class="chip blue">${optionsOf(p).length} colors</span>` : ''}${p.custom && p.custom.on ? '<span class="chip acc">custom</span>' : ''}</div></div></div></button>`;
+        <div class="chips" style="margin-top:4px">${p.published === false ? '<span class="chip warn">hidden</span>' : '<span class="chip ok">live</span>'}${modelUrl(p.id) ? '<span class="chip">🔗 model</span>' : ''}${chipsStock(p)}${wasPrice(p) ? `<span class="chip acc">−${pctOff(p)}%</span>` : ''}${optionsOf(p).length ? `<span class="chip blue">${optionsOf(p).length} colors</span>` : ''}${p.custom && p.custom.on ? '<span class="chip acc">custom</span>' : ''}</div></div></div></button>`;
     }).join('') : `<div class="empty">No products yet. Tap “Add product”.</div>${B.mode === 'demo' ? '<div class="gap"></div><button class="btn block" data-act="seed">Load 3 demo products</button>' : ''}`}`);
 }
 
@@ -126,6 +126,9 @@ const r2 = (n) => Math.round(n * 100) / 100;
 
 // Tells every shop app that the product list changed, so they reload it right away instead of waiting for their saved copy to expire.
 const bumpCat = () => B.set('settings', 'shop', { catRev: Date.now() }).catch((e) => console.warn('catRev', e));
+
+// The private link to the 3D model lives in its own admin-only collection (never inside the public product), so customers can never read it.
+const modelUrl = (pid) => ((S.modelLinks || []).find((x) => x.id === pid) || {}).url || '';
 
 function openProductEditor(id) {
   const old = S.products.find((p) => p.id === id);
@@ -164,6 +167,8 @@ function openProductEditor(id) {
       <div class="two"><label class="f"><span>Max letters</span><input class="in" id="eCm" inputmode="numeric" value="${esc((p.custom && p.custom.max) || 12)}"></label>
       <label class="f"><span>Required?</span><select class="in" id="eCr"><option value="1"${!p.custom || p.custom.required !== false ? ' selected' : ''}>Yes, must fill</option><option value="0"${p.custom && p.custom.required === false ? ' selected' : ''}>No, optional</option></select></label></div>
     </div>
+    <div class="h2">Model link <span class="mut sm">(only you see this)</span></div>
+    <div class="row"><input class="in grow" id="eML" type="url" inputmode="url" placeholder="https://…  (Printables, Thingiverse, Drive…)" value="${esc(id ? modelUrl(id) : '')}" autocomplete="off"><button type="button" class="btn sm" data-a="openML">Open ↗</button></div>
     <label class="check"><input type="checkbox" id="eV" ${p.published !== false ? 'checked' : ''}> <span>Visible in the shop</span></label>
     <label class="check"><input type="checkbox" id="eS" ${p.soldOut ? 'checked' : ''}> <span>Mark as sold out by hand (all colors)</span></label>
     ${B.pushAvailable ? `<label class="check"><input type="checkbox" id="eNo" ${old ? '' : 'checked'}> <span>🔔 Notify customers about this product</span></label>` : ''}
@@ -236,13 +241,14 @@ function openProductEditor(id) {
     if (a === 'addOpt') { opts.push({ name: '', filaments: [], images: [], files: [] }); drawOpts(); }
     if (a === 'pf') { const v = b.dataset.v; pf = pf.includes(v) ? pf.filter((x) => x !== v) : [...pf, v]; b.classList.toggle('on', pf.includes(v)); }
     if (a === 'of') { const o = opts[+b.dataset.i], v = b.dataset.v; o.filaments = o.filaments.includes(v) ? o.filaments.filter((x) => x !== v) : [...o.filaments, v]; b.classList.toggle('on', o.filaments.includes(v)); }
+    if (a === 'openML') { const u = $('#eML', s.el).value.trim(); if (/^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener,noreferrer'); else toast('Paste a link that starts with https://', 3500); }
     if (a === 'rmO') { opts.splice(+b.dataset.i, 1); drawOpts(); }
     if (a === 'pickO') { pickIdx = +b.dataset.i; $('#eOF', s.el).click(); }
     if (a === 'rmOI') { opts[+b.dataset.i].images.splice(+b.dataset.j, 1); drawOpts(); }
     if (a === 'rmOF') { opts[+b.dataset.i].files.splice(+b.dataset.j, 1); drawOpts(); }
     if (a === 'del') {
       if (!confirm('Delete this product for good?')) return;
-      await B.del('products', id); await bumpCat(); s.close(); toast('Deleted');
+      await B.del('products', id); await B.del('modelLinks', id).catch(() => {}); await bumpCat(); s.close(); toast('Deleted');
     }
     if (a === 'save') {
       const name = $('#eN', s.el).value.trim();
@@ -269,11 +275,14 @@ function openProductEditor(id) {
           custom: $('#eCu', s.el).checked ? { on: true, label: $('#eCl', s.el).value.trim().slice(0, 80) || 'Your text', max: Math.min(40, Math.max(1, parseInt($('#eCm', s.el).value, 10) || 12)), required: $('#eCr', s.el).value !== '0' } : null,
           description: $('#eD', s.el).value.trim(), images: urls, published, soldOut: $('#eS', s.el).checked, updatedAt: Date.now(),
         };
+        const ml = $('#eML', s.el).value.trim();
+        if (ml && !/^https?:\/\/\S+$/i.test(ml)) { toast('The model link must start with https://', 4500); b.disabled = false; b.textContent = old ? 'Save changes' : 'Publish product'; return; }
         if (JSON.stringify(data).length > 900000) { toast('Too many photos for one product. Remove a few.', 5000); b.disabled = false; b.textContent = old ? 'Save changes' : 'Publish product'; return; }
         let pid = id;
         if (old) await B.set('products', id, data);
         else pid = await B.add('products', { ...data, createdAt: Date.now() });
         await bumpCat();
+        if (ml) await B.set('modelLinks', pid, { url: ml, at: Date.now() }); else if (modelUrl(pid)) await B.del('modelLinks', pid);
         if ($('#eNo', s.el) && $('#eNo', s.el).checked && published && !data.soldOut) {
           await B.add('broadcasts', { title: (old ? 'Update: ' : 'New: ') + name, body: `${eur(data.price)}${data.description ? ' · ' + data.description.slice(0, 80) : ''}`, productId: pid, at: Date.now() });
           toast('Saved · customers notified 🔔');
@@ -394,7 +403,7 @@ function backupCustomers() {
 }
 async function backupAll() {
   const out = { app: 'gewy-builds', exportedAt: new Date().toISOString(), data: {} };
-  for (const c of ['products', 'orders', 'requests', 'messages', 'settings', 'accounts', 'devices', 'blocks']) out.data[c] = await B.getAll(c);
+  for (const c of ['products', 'orders', 'requests', 'messages', 'settings', 'accounts', 'devices', 'blocks', 'modelLinks']) out.data[c] = await B.getAll(c);
   saveFile(`gewy-backup-${today()}.json`, JSON.stringify(out), 'application/json');
 }
 
@@ -1043,6 +1052,7 @@ function startData() {
   S.stops.push(B.watch('devices', (r) => { S.devices = r; refresh(['home', 'audience']); }));
   S.stops.push(B.watch('accounts', (r) => { S.accounts = r; refresh(['home', 'audience']); }));
   S.stops.push(B.watch('blocks', (r) => { S.blocks = r; drawBlocks(); }));
+  S.stops.push(B.watch('modelLinks', (r) => { S.modelLinks = r; }));
   S.stops.push(B.watchDoc('settings', 'shop', (d) => { S.settings = d || {}; refresh(['home', 'filaments', 'products']); }));
   S.stops.push(B.watch('orders', (r) => {
     if (known.orders) r.filter((o) => !known.orders.has(o.id) && o.source !== 'manual').forEach((o) => toast(`📦 New order ${o.no} · ${eur(o.total)}`, 6000));
