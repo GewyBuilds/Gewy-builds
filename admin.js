@@ -166,6 +166,7 @@ function openProductEditor(id) {
       <label class="f"><span>Text shown above the box</span><input class="in" id="eCl" maxlength="80" placeholder="Choose your name" value="${esc((p.custom && p.custom.label) || '')}"></label>
       <div class="two"><label class="f"><span>Max letters</span><input class="in" id="eCm" inputmode="numeric" value="${esc((p.custom && p.custom.max) || 12)}"></label>
       <label class="f"><span>Required?</span><select class="in" id="eCr"><option value="1"${!p.custom || p.custom.required !== false ? ' selected' : ''}>Yes, must fill</option><option value="0"${p.custom && p.custom.required === false ? ' selected' : ''}>No, optional</option></select></label></div>
+      <label class="f"><span>Customer can also add an image</span><select class="in" id="eCi"><option value="0"${!p.custom || !p.custom.img ? ' selected' : ''}>No image</option><option value="1"${p.custom && p.custom.img === 1 ? ' selected' : ''}>Yes, optional</option><option value="2"${p.custom && p.custom.img === 2 ? ' selected' : ''}>Yes, must add one</option></select></label>
     </div>
     <div class="h2">Model link <span class="mut sm">(only you see this)</span></div>
     <div class="row"><input class="in grow" id="eML" type="url" inputmode="url" placeholder="https://…  (Printables, Thingiverse, Drive…)" value="${esc(id ? modelUrl(id) : '')}" autocomplete="off"><button type="button" class="btn sm" data-a="openML">Open ↗</button></div>
@@ -272,7 +273,7 @@ function openProductEditor(id) {
         const data = {
           name, price: f.price, listPrice: f.disc ? f.normal : null, cost: num($('#eC', s.el).value), category: $('#eCa', s.el).value.trim(),
           filament: pf[0] || '', filaments: pf, options, colors: options.map((o) => o.name),
-          custom: $('#eCu', s.el).checked ? { on: true, label: $('#eCl', s.el).value.trim().slice(0, 80) || 'Your text', max: Math.min(40, Math.max(1, parseInt($('#eCm', s.el).value, 10) || 12)), required: $('#eCr', s.el).value !== '0' } : null,
+          custom: $('#eCu', s.el).checked ? { on: true, label: $('#eCl', s.el).value.trim().slice(0, 80) || 'Your text', max: Math.min(40, Math.max(1, parseInt($('#eCm', s.el).value, 10) || 12)), required: $('#eCr', s.el).value !== '0', img: +$('#eCi', s.el).value || 0 } : null,
           description: $('#eD', s.el).value.trim(), images: urls, published, soldOut: $('#eS', s.el).checked, updatedAt: Date.now(),
         };
         const ml = $('#eML', s.el).value.trim();
@@ -619,7 +620,7 @@ function openOrder(id, focusMsg) {
       <div class="mut sm" style="margin-top:6px">${esc(fmtDay(o.createdAt))}${o.source === 'manual' ? ' · manual sale' : ''}</div></div>
     ${priceWarning(o)}
     <div class="h2">Items</div>
-    <div class="card">${o.items.map((i) => `<div class="row between"><span>${esc(i.name)} × ${i.qty}${i.custom ? `<br><b style="color:var(--acc2)">✍️ ${esc(i.custom)}</b>` : ''}${i.id && modelUrl(i.id) ? `<br><a href="${esc(modelUrl(i.id))}" target="_blank" rel="noopener noreferrer" style="color:var(--acc2)">🔗 Open 3D model ↗</a>` : ''}</span><b class="mono">${eur(i.price * i.qty)}</b></div>`).join('')}
+    <div class="card">${o.items.map((i) => `<div class="row between"><span>${esc(i.name)} × ${i.qty}${i.custom ? `<br><b style="color:var(--acc2)">✍️ ${esc(i.custom)}</b>` : ''}${i.cimg ? `<div class="thumbs"><div class="thumb"><img src="${esc(i.cimg)}" data-zoom alt=""></div></div>` : ''}${i.id && modelUrl(i.id) ? `<br><a href="${esc(modelUrl(i.id))}" target="_blank" rel="noopener noreferrer" style="color:var(--acc2)">🔗 Open 3D model ↗</a>` : ''}</span><b class="mono">${eur(i.price * i.qty)}</b></div>`).join('')}
       ${o.fee ? `<div class="row between mut"><span>Delivery fee</span><span class="mono">${eur(o.fee)}</span></div>` : ''}
       <div class="sep"></div><div class="row between"><b>Total</b><b class="mono" style="font-size:20px">${eur(o.total)}</b></div></div>
     <div class="h2">Payment</div>
