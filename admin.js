@@ -443,6 +443,7 @@ function openThread(id) {
       ${r.area ? `<div>📍 ${esc(r.area)}</div>` : ''}
       ${preorderInfo(r)}
       <div style="white-space:pre-wrap;margin-top:6px">${esc(r.desc)}</div>
+      ${(r.colors || []).length ? `<div style="margin-top:4px">🎨 <b>${esc(r.colors.join(', '))}</b></div>` : ''}
       ${r.budget ? `<div class="mut sm" style="margin-top:4px">Budget: ${esc(r.budget)}</div>` : ''}
       ${(r.refImages || []).length ? `<div class="thumbs">${r.refImages.map((u) => `<div class="thumb"><img src="${esc(u)}" data-zoom alt=""></div>`).join('')}</div>` : ''}
       <div class="gap-s"></div>

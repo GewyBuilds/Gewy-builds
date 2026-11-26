@@ -3,7 +3,7 @@ import { termsHtml, privacyHtml } from './shared/legal.js';
 import { startWelcome, greeting, welcomeBack } from './shared/welcome.js';
 import { cacheGet, cacheSet } from './shared/cache.js';
 import { HANDOFF_DEF, COURIER_DEF, parseAreas } from './shared/areas.js';
-import { optionsOf, stockOf, lineOut, wasPrice, pctOff } from './shared/stock.js';
+import { filamentsOf, optionsOf, stockOf, lineOut, wasPrice, pctOff } from './shared/stock.js';
 import { $, $$, esc, eur, toast, sheet, ago, copy, fillPayLink, waNumber, getTheme, setTheme, themeIcon } from './shared/ui.js';
 
 const CFG = globalThis.GEWY_CONFIG || {};
@@ -57,7 +57,7 @@ const DICT = {
     newReq: 'New custom request', noReqs: 'No custom requests yet.',
     reqTitle: 'What do you want made?', reqTitleP: 'e.g. Name sign for my room',
     reqDesc: 'Describe it', reqDescP: 'Size, colors, text, what it is for...',
-    reqBudget: 'Budget (optional)', reqPhoto: 'Reference photos', sendReq: 'Send request', sent: 'Request sent!',
+    reqBudget: 'Budget (optional)', reqPhoto: 'Photo or image for your build', reqPhotoHint: 'Add a picture of what you want (a logo, a drawing, a reference).', reqColors: 'Colors (choose up to 5)', reqColorsP: 'Which colors do you want? e.g. red, black', colorsNeeded: 'Please choose at least 1 color', maxColors: 'Max 5 colors', sendReq: 'Send request', sent: 'Request sent!',
     rq_new: 'Sent', rq_discussing: 'In talks', rq_quoted: 'Preview and price ready', rq_approved: 'Approved',
     rq_printing: 'Printing', rq_done: 'Done', rq_closed: 'Closed',
     msgP: 'Write a message...', send: 'Send', quoteReady: 'Price for your item', approve: 'Approve and order',
@@ -129,7 +129,7 @@ const DICT = {
     newReq: 'Νέο αίτημα custom', noReqs: 'Δεν υπάρχουν αιτήματα ακόμα.',
     reqTitle: 'Τι θες να φτιαχτεί;', reqTitleP: 'π.χ. Επιγραφή με το όνομά μου',
     reqDesc: 'Περιγραφή', reqDescP: 'Μέγεθος, χρώματα, κείμενο, για τι το θες...',
-    reqBudget: 'Budget (προαιρετικό)', reqPhoto: 'Φωτογραφίες αναφοράς', sendReq: 'Αποστολή αιτήματος', sent: 'Το αίτημα στάλθηκε!',
+    reqBudget: 'Budget (προαιρετικό)', reqPhoto: 'Φωτογραφία ή εικόνα για το αντικείμενο', reqPhotoHint: 'Πρόσθεσε μια εικόνα αυτού που θες (λογότυπο, σχέδιο, αναφορά).', reqColors: 'Χρώματα (διάλεξε έως 5)', reqColorsP: 'Ποια χρώματα θες; π.χ. κόκκινο, μαύρο', colorsNeeded: 'Διάλεξε τουλάχιστον 1 χρώμα', maxColors: 'Μέγιστο 5 χρώματα', sendReq: 'Αποστολή αιτήματος', sent: 'Το αίτημα στάλθηκε!',
     rq_new: 'Στάλθηκε', rq_discussing: 'Συζήτηση', rq_quoted: 'Έτοιμη προεπισκόπηση και τιμή', rq_approved: 'Εγκρίθηκε',
     rq_printing: 'Σε εκτύπωση', rq_done: 'Ολοκληρώθηκε', rq_closed: 'Έκλεισε',
     msgP: 'Γράψε μήνυμα...', send: 'Αποστολή', quoteReady: 'Τιμή για το αντικείμενο', approve: 'Έγκριση και παραγγελία',
@@ -829,13 +829,17 @@ function openNewRequest() {
   if (reqToday() >= MAX_REQ_DAY) return toast(t('reqLimit', { n: MAX_REQ_DAY }), 4500);
   const prof = profile();
   const files = [];
+  const reqFils = filamentsOf(S.settings).filter((f) => f.on !== false);
+  const picked = new Set();
   const s = sheet(`
     <div class="hd"><div class="ttl">${esc(t('newReq'))}</div><button class="xbtn" data-close>✕</button></div>
     <label class="f"><span>${esc(t('reqTitle'))}</span><input class="in" id="rT" placeholder="${esc(t('reqTitleP'))}"></label>
     <label class="f"><span>${esc(t('reqDesc'))}</span><textarea class="in" id="rD" placeholder="${esc(t('reqDescP'))}"></textarea></label>
     <label class="f"><span>${esc(t('reqBudget'))}</span><input class="in" id="rB"></label>
     <label class="f"><span>${esc(t('area'))} *</span><select class="in" id="rArea">${areaOpts(allAreas(), prof.area)}</select></label>
-    <div class="h2">${esc(t('reqPhoto'))}</div>
+    <div class="h2">${esc(t('reqColors'))} *</div>
+    ${reqFils.length ? `<div class="chips" id="rCols">${reqFils.map((f, i) => `<button type="button" class="pill" data-a="rc" data-i="${i}">${esc(f.name)}</button>`).join('')}</div>` : `<input class="in" id="rColT" maxlength="80" placeholder="${esc(t('reqColorsP'))}">`}
+    <div class="h2">${esc(t('reqPhoto'))}</div><div class="mut sm" style="margin-bottom:6px">${esc(t('reqPhotoHint'))}</div>
     <div class="thumbs" id="rTh"><button class="addimg" data-a="pick">＋</button></div>
     <input type="file" id="rF" accept="image/*" multiple class="hide">
     <label class="f"><span>${esc(t('yourName'))}</span><input class="in" id="rN" value="${esc(prof.name || '')}"></label>
@@ -852,6 +856,11 @@ function openNewRequest() {
     const b = e.target.closest('[data-a]');
     if (!b) return;
     if (b.dataset.a === 'pick') $('#rF', s.el).click();
+    if (b.dataset.a === 'rc') {
+      const i = +b.dataset.i;
+      if (picked.has(i)) picked.delete(i); else if (picked.size >= 5) return toast(t('maxColors')); else picked.add(i);
+      b.classList.toggle('on', picked.has(i));
+    }
     if (b.dataset.a === 'x') { files.splice(+b.dataset.i, 1); drawThumbs(); }
     if (b.dataset.a === 'send') {
       const title = $('#rT', s.el).value.trim();
@@ -862,6 +871,8 @@ function openNewRequest() {
       if (!title || !desc) return toast(t('reqTitle'));
       const area = $('#rArea', s.el).value;
       if (!area) return toast(t('areaNeeded'));
+      const colors = reqFils.length ? [...picked].sort((x, y) => x - y).map((i) => reqFils[i].name) : ($('#rColT', s.el).value || '').split(/[,;]+/).map((x) => x.trim()).filter(Boolean).slice(0, 5);
+      if (!colors.length) return toast(t('colorsNeeded'));
       if (!$('#own', s.el).checked) return toast(t('ownNeeded'));
       if (!$('#agree', s.el).checked) return toast(t('agreeNeeded'));
       if (!name || digits(phone).length < 6) return toast(t('fillRequired'));
@@ -870,7 +881,7 @@ function openNewRequest() {
         const refImages = [];
         for (const f of files) refImages.push(await B.uploadImage(f, 'requests/' + B.uid()));
         const now = Date.now();
-        const id = await B.add('requests', { ownerUid: B.uid(), name, phone, area, title, desc, budget: $('#rB', s.el).value.trim(), refImages, status: 'new', quote: null, createdAt: now, updatedAt: now, lastFrom: 'customer' });
+        const id = await B.add('requests', { ownerUid: B.uid(), name, phone, area, title, desc, colors, budget: $('#rB', s.el).value.trim(), refImages, status: 'new', quote: null, createdAt: now, updatedAt: now, lastFrom: 'customer' });
         localStorage.setItem('gewy:profile', JSON.stringify({ ...prof, name, phone, area }));
         localStorage.setItem(seenKey(id), String(now));
         B.bumpStage(4);
@@ -898,6 +909,7 @@ function openThread(id) {
     $('#tTitle', s.el).textContent = r.title;
     $('#tChip', s.el).innerHTML = `<span class="chip ${REQ_CHIP[r.status] || ''}">${esc(t('rq_' + r.status))}</span>`;
     let h = `<div class="card"><div class="mut sm">${esc(t('details'))}</div><div style="white-space:pre-wrap">${esc(r.desc)}</div>
+      ${(r.colors || []).length ? `<div class="mut sm" style="margin-top:6px">🎨 ${esc(r.colors.join(', '))}</div>` : ''}
       ${r.budget ? `<div class="mut sm" style="margin-top:6px">${esc(t('reqBudget'))}: ${esc(r.budget)}</div>` : ''}
       ${(r.refImages || []).length ? `<div class="thumbs">${r.refImages.map((u) => `<div class="thumb"><img src="${esc(u)}" data-zoom alt=""></div>`).join('')}</div>` : ''}</div>`;
     if (r.quote && r.status === 'quoted') {
