@@ -71,7 +71,7 @@ const DICT = {
     aboutHowText: '1. Pick a product, or send a custom request.\n2. Choose how you want to get it and how you pay.\n3. I print it and message you when it is ready.',
     lowStock: 'Low stock', backSoon: 'Back soon', outNote: 'This one is sold out right now. It will be back soon.',
     share: 'Share', linkCopied: 'Link copied', qty: 'Quantity',
-    preorder: 'Pre-order', yourImage: 'Your image', imageHint: 'Add a picture to print on it (a logo, a drawing, a photo).', imageNeeded: 'Please add an image', preorderHint: 'Want it when it is back? Send a pre-order request. I will confirm the price and when it will be ready. You pay nothing until you approve.', preorderSent: 'Pre-order sent!', needAccount: 'Please log in or create an account to pre-order.',
+    preorder: 'Pre-order', yourImage: 'Your image', youPay: 'You pay', payNote: 'Price for your item with your own design and colors (× the quantity you choose).', imageHint: 'Add a picture to print on it (a logo, a drawing, a photo).', imageNeeded: 'Please add an image', preorderHint: 'Want it when it is back? Send a pre-order request. I will confirm the price and when it will be ready. You pay nothing until you approve.', preorderSent: 'Pre-order sent!', needAccount: 'Please log in or create an account to pre-order.',
     cartOut: 'Out of stock · back soon', cartBack: 'Back in stock!', cartAddAgain: 'Add to cart', cartNothing: 'Nothing available to buy right now.',
     soldWhile: 'Sorry, these just sold out: {n}. They moved to the bottom of your cart.', priceChanged: 'Some prices changed. Please check your order and try again.', gone: 'Not available anymore',
     account: 'Account', accOptional: 'An account is optional. You can always order as a guest.', accWhy: 'With an account you see your orders and requests on any phone, and you can pre-order sold-out items.',
@@ -143,7 +143,7 @@ const DICT = {
     aboutHowText: '1. Διάλεξε προϊόν ή στείλε αίτημα custom.\n2. Επίλεξε πώς θες να το παραλάβεις και πώς θα πληρώσεις.\n3. Το τυπώνω και σου στέλνω μήνυμα όταν είναι έτοιμο.',
     lowStock: 'Λίγα τεμάχια', backSoon: 'Σύντομα ξανά', outNote: 'Αυτό έχει εξαντληθεί αυτή τη στιγμή. Θα επανέλθει σύντομα.',
     share: 'Κοινοποίηση', linkCopied: 'Ο σύνδεσμος αντιγράφηκε', qty: 'Ποσότητα',
-    preorder: 'Προπαραγγελία', yourImage: 'Η εικόνα σου', imageHint: 'Πρόσθεσε μια εικόνα για να τυπωθεί (λογότυπο, σχέδιο, φωτογραφία).', imageNeeded: 'Πρόσθεσε μια εικόνα', preorderHint: 'Το θες όταν επανέλθει; Στείλε αίτημα προπαραγγελίας. Θα επιβεβαιώσω την τιμή και πότε θα είναι έτοιμο. Δεν πληρώνεις τίποτα μέχρι να εγκρίνεις.', preorderSent: 'Η προπαραγγελία στάλθηκε!', needAccount: 'Συνδέσου ή φτιάξε λογαριασμό για να κάνεις προπαραγγελία.',
+    preorder: 'Προπαραγγελία', yourImage: 'Η εικόνα σου', youPay: 'Πληρώνεις', payNote: 'Η τιμή για το αντικείμενό σου με το δικό σου σχέδιο και χρώματα (× η ποσότητα που διαλέγεις).', imageHint: 'Πρόσθεσε μια εικόνα για να τυπωθεί (λογότυπο, σχέδιο, φωτογραφία).', imageNeeded: 'Πρόσθεσε μια εικόνα', preorderHint: 'Το θες όταν επανέλθει; Στείλε αίτημα προπαραγγελίας. Θα επιβεβαιώσω την τιμή και πότε θα είναι έτοιμο. Δεν πληρώνεις τίποτα μέχρι να εγκρίνεις.', preorderSent: 'Η προπαραγγελία στάλθηκε!', needAccount: 'Συνδέσου ή φτιάξε λογαριασμό για να κάνεις προπαραγγελία.',
     cartOut: 'Εξαντλήθηκε · σύντομα ξανά', cartBack: 'Ξαναβρέθηκε σε απόθεμα!', cartAddAgain: 'Προσθήκη στο καλάθι', cartNothing: 'Δεν υπάρχει κάτι διαθέσιμο για αγορά αυτή τη στιγμή.',
     soldWhile: 'Λυπάμαι, μόλις εξαντλήθηκαν: {n}. Μεταφέρθηκαν στο κάτω μέρος του καλαθιού σου.', priceChanged: 'Κάποιες τιμές άλλαξαν. Έλεγξε την παραγγελία σου και δοκίμασε ξανά.', gone: 'Δεν είναι πια διαθέσιμο',
     account: 'Λογαριασμός', accOptional: 'Ο λογαριασμός είναι προαιρετικός. Μπορείς πάντα να παραγγείλεις ως επισκέπτης.', accWhy: 'Με λογαριασμό βλέπεις τις παραγγελίες και τα αιτήματά σου από οποιοδήποτε κινητό και μπορείς να κάνεις προπαραγγελία σε εξαντλημένα.',
@@ -318,6 +318,8 @@ function openProduct(id) {
   let qty = 1;
   let ctext = '';
   let cimg = '', cimgId = '';
+  const cfils = filamentsOf(S.settings).filter((f) => f.on !== false);
+  const cpick = new Set();
   const cu = p.custom && p.custom.on ? p.custom : null;
   const cmax = cu ? Math.min(40, Math.max(1, +cu.max || 12)) : 0;
   const opts = optionsOf(p);
@@ -339,6 +341,8 @@ function openProduct(id) {
     ${opts.length ? `<div class="h2">${esc(t('color'))}</div><div class="chips" id="cols">${opts.map((x, i) => `<button class="pill${i === oi ? ' on' : ''}${sk.opts[i].out ? ' off' : ''}" data-a="color" data-i="${i}">${esc(x.name)}${sk.opts[i].out ? ' · ' + esc(t('soldOut')) : ''}</button>`).join('')}</div>` : ''}
     ${cu && !out ? `<div class="h2">${esc(cu.label || t('yourText'))}${cu.required === false ? '' : ' *'}</div><input class="in" id="cust" maxlength="${cmax}" value="${esc(ctext)}" autocomplete="off"><div class="mut sm" style="margin-top:4px">${esc(t('maxLetters', { n: cmax }))}</div>` : ''}
     ${cu && cu.img && !out ? `<div class="h2">📷 ${esc(t('yourImage'))}${cu.img === 2 ? ' *' : ''}</div><div class="thumbs">${cimg ? `<div class="thumb"><img src="${cimg}" alt=""><button data-a="cimgX">✕</button></div>` : '<button class="addimg" data-a="cimgPick">＋</button>'}</div><input type="file" id="cimgF" accept="image/*" class="hide"><div class="mut sm" style="margin-top:4px">${esc(t('imageHint'))}</div>` : ''}
+    ${cu && cu.img && !out ? `<div class="h2">🎨 ${esc(t('reqColors'))} *</div>${cfils.length ? `<div class="chips" id="ccols">${cfils.map((f, i) => `<button type="button" class="pill${cpick.has(i) ? ' on' : ''}" data-a="cc" data-i="${i}">${esc(f.name)}</button>`).join('')}</div>` : `<input class="in" id="ccT" maxlength="80" placeholder="${esc(t('reqColorsP'))}">`}` : ''}
+    ${cu && cu.img && !out ? `<div class="card" style="margin-top:12px"><div class="row between"><span>${esc(t('youPay'))}</span><b class="mono" style="font-size:20px;color:var(--acc2)" id="ptot">${eur((+p.price || 0) * qty)}</b></div><div class="mut sm" style="margin-top:4px">${esc(t('payNote'))}</div></div>` : ''}
     ${out ? `<div class="card" style="margin-top:12px"><b>⏳ ${esc(t('backSoon'))}</b><div class="mut sm" style="margin-top:4px">${esc(t('outNote'))}</div>
         <div class="gap-s"></div><button class="btn pri block" data-a="pre">🔔 ${esc(t('preorder'))}</button><p class="mut sm" style="margin:8px 0 0">${esc(t('preorderHint'))}</p></div>`
       : `<div class="gap"></div>
@@ -352,23 +356,29 @@ function openProduct(id) {
     const c = cur();
     const col = c ? c.name : '';
     const tx = cu ? ctext.replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, cmax) : '';
-    return { key: p.id + '|' + col + '|' + tx.toLowerCase() + (cimg ? '|' + cimgId : ''), pid: p.id, custom: tx, ...(cimg ? { cimg } : {}), name: p.name + (col ? ' · ' + col : '') + (tx ? ' · “' + tx + '”' : ''), price: +p.price || 0, cost: +p.cost || 0, qty, color: col, image: (c && c.images && c.images[0]) || (p.images || [])[0] || '' };
+    const cc = !(cu && cu.img) ? [] : cfils.length ? [...cpick].sort((x, y) => x - y).map((i) => cfils[i].name) : (($('#ccT', s.el) || {}).value || '').split(/[,;]+/).map((x) => x.trim()).filter(Boolean).slice(0, 5);
+    return { key: p.id + '|' + col + '|' + tx.toLowerCase() + (cimg ? '|' + cimgId : '') + (cc.length ? '|' + cc.join('+') : ''), pid: p.id, custom: tx, ...(cimg ? { cimg } : {}), ...(cc.length ? { ccol: cc } : {}), name: p.name + (col ? ' · ' + col : '') + (tx ? ' · “' + tx + '”' : ''), price: +p.price || 0, cost: +p.cost || 0, qty, color: col, image: (c && c.images && c.images[0]) || (p.images || [])[0] || '' };
   };
   s.el.addEventListener('input', (e) => { if (e.target.id === 'cust') ctext = e.target.value; });
   s.el.addEventListener('change', async (e) => {
     if (e.target.id !== 'cimgF' || !e.target.files[0]) return;
     try { cimg = await B.uploadImage(e.target.files[0]); cimgId = 'i' + Date.now().toString(36); draw(); } catch (err) { console.error(err); toast(t('err')); }
   });
-  const needText = () => { if (cu && cu.img === 2 && !cimg) { toast(t('imageNeeded'), 4000); return true; } if (cu && cu.required !== false && !item().custom) { toast(t('textNeeded', { l: cu.label || t('yourText') }), 4000); const i = $('#cust', s.el); if (i) i.focus(); return true; } return false; };
+  const needText = () => { if (cu && cu.img === 2 && !cimg) { toast(t('imageNeeded'), 4000); return true; } if (cu && cu.img && !item().ccol) { toast(t('colorsNeeded'), 4000); return true; } if (cu && cu.required !== false && !item().custom) { toast(t('textNeeded', { l: cu.label || t('yourText') }), 4000); const i = $('#cust', s.el); if (i) i.focus(); return true; } return false; };
   s.el.addEventListener('click', (e) => {
     const b = e.target.closest('[data-a]');
     if (!b) return;
     const a = b.dataset.a;
     if ((a === 'add' || a === 'buy') && needText()) return;
+    if (a === 'cc') {
+      const i = +b.dataset.i;
+      if (cpick.has(i)) cpick.delete(i); else if (cpick.size >= 5) return toast(t('maxColors')); else cpick.add(i);
+      b.classList.toggle('on', cpick.has(i)); return;
+    }
     if (a === 'cimgPick') { $('#cimgF', s.el).click(); return; }
     if (a === 'cimgX') { cimg = ''; cimgId = ''; draw(); return; }
-    if (a === 'minus') { qty = Math.max(1, qty - 1); $('#q', s.el).textContent = qty; }
-    if (a === 'plus') { qty = Math.min(20, qty + 1); $('#q', s.el).textContent = qty; }
+    if (a === 'minus') { qty = Math.max(1, qty - 1); $('#q', s.el).textContent = qty; if ($('#ptot', s.el)) $('#ptot', s.el).textContent = eur((+p.price || 0) * qty); }
+    if (a === 'plus') { qty = Math.min(20, qty + 1); $('#q', s.el).textContent = qty; if ($('#ptot', s.el)) $('#ptot', s.el).textContent = eur((+p.price || 0) * qty); }
     if (a === 'color') { oi = +b.dataset.i; draw(); }
     if (a === 'add') {
       B.bumpStage(2);
@@ -655,7 +665,7 @@ function openCheckout({ items, requestId = null, fromCart = false }) {
         const bx = delivery === 'boxnow' ? boxSplit(items, st) : null;
         const order = {
           uid: B.uid(), no: newCode(),
-          items: items.map((i) => ({ id: i.pid || null, name: i.name, price: i.price, cost: i.cost || 0, qty: i.qty, color: i.color || '', ...(i.custom ? { custom: String(i.custom).slice(0, 40) } : {}), ...(i.cimg && String(i.cimg).startsWith('data:image/') ? { cimg: i.cimg } : {}), image: i.image || '' })),
+          items: items.map((i) => ({ id: i.pid || null, name: i.name, price: i.price, cost: i.cost || 0, qty: i.qty, color: i.color || '', ...(i.custom ? { custom: String(i.custom).slice(0, 40) } : {}), ...(i.cimg && String(i.cimg).startsWith('data:image/') ? { cimg: i.cimg } : {}), ...(Array.isArray(i.ccol) && i.ccol.length ? { ccol: i.ccol.slice(0, 5).map((x) => String(x).slice(0, 40)) } : {}), image: i.image || '' })),
           total: bx ? bx.total : Math.round(total * 100) / 100,
           ...(bx ? { fee: bx.fee, deposit: bx.deposit, balance: bx.balance } : {}),
           costTotal: Math.round(items.reduce((n, i) => n + (i.cost || 0) * i.qty, 0) * 100) / 100,
