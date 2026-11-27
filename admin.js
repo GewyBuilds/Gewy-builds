@@ -84,13 +84,13 @@ function pushNudge() {
 /* ------------------------------------------------------------- products */
 function viewProducts() {
   const rows = [...S.products].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  frame('PRODUCTS', `<div class="gap"></div><button class="btn pri block" data-act="editProd" data-id="">＋ Add product</button><div class="gap"></div>
+  frame('PRODUCTS', `<div class="gap"></div><div class="two"><button class="btn pri block" data-act="editProd" data-id="">＋ Add product</button><button class="btn block" data-act="editProd" data-id="" data-bundle="1">🎁 New bundle</button></div><div class="gap"></div>
     ${rows.length ? rows.map((p) => {
       const margin = p.cost ? ` · profit ${eur(p.price - p.cost)}` : '';
       return `<button class="card prod" style="padding:10px" data-act="editProd" data-id="${esc(p.id)}"><div class="row">
         <div style="width:64px;height:64px;border-radius:12px;overflow:hidden;background:var(--bg3);flex:none">${p.images && p.images[0] ? `<img src="${esc(p.images[0])}" style="width:100%;height:100%;object-fit:cover" alt="">` : '<div class="noimg">🧩</div>'}</div>
         <div class="grow"><b>${esc(p.name)}</b><div class="mono mut sm">${wasPrice(p) ? `<s>${eur(wasPrice(p))}</s> ` : ''}${eur(p.price)}${margin}</div>
-        <div class="chips" style="margin-top:4px">${p.published === false ? '<span class="chip warn">hidden</span>' : '<span class="chip ok">live</span>'}${modelUrl(p.id) ? '<span class="chip">🔗 model</span>' : ''}${chipsStock(p)}${wasPrice(p) ? `<span class="chip acc">−${pctOff(p)}%</span>` : ''}${optionsOf(p).length ? `<span class="chip blue">${optionsOf(p).length} colors</span>` : ''}${p.custom && p.custom.on ? '<span class="chip acc">custom</span>' : ''}</div></div></div></button>`;
+        <div class="chips" style="margin-top:4px">${p.published === false ? '<span class="chip warn">hidden</span>' : '<span class="chip ok">live</span>'}${modelUrl(p.id) ? '<span class="chip">🔗 model</span>' : ''}${p.bundle ? '<span class="chip acc">🎁 bundle</span>' : ''}${chipsStock(p)}${wasPrice(p) ? `<span class="chip acc">−${pctOff(p)}%</span>` : ''}${optionsOf(p).length ? `<span class="chip blue">${optionsOf(p).length} colors</span>` : ''}${p.custom && p.custom.on ? '<span class="chip acc">custom</span>' : ''}</div></div></div></button>`;
     }).join('') : `<div class="empty">No products yet. Tap “Add product”.</div>${B.mode === 'demo' ? '<div class="gap"></div><button class="btn block" data-act="seed">Load 3 demo products</button>' : ''}`}`);
 }
 
@@ -130,9 +130,12 @@ const bumpCat = () => B.set('settings', 'shop', { catRev: Date.now() }).catch((e
 // The private link to the 3D model lives in its own admin-only collection (never inside the public product), so customers can never read it.
 const modelUrl = (pid) => ((S.modelLinks || []).find((x) => x.id === pid) || {}).url || '';
 
-function openProductEditor(id) {
+function openProductEditor(id, asBundle) {
   const old = S.products.find((p) => p.id === id);
   const p = old || { name: '', price: '', listPrice: 0, cost: '', category: '', colors: [], options: [], filament: '', description: '', images: [], published: true, soldOut: false };
+  const bun = p.bundle || (asBundle ? { pids: [], extra: [] } : null);
+  const bunPick = new Set((bun && bun.pids) || []);
+  const bunProds = S.products.filter((x) => !x.bundle && x.id !== id).sort((x, y) => String(x.name).localeCompare(String(y.name)));
   const imgs = [...(p.images || [])];
   const files = [];
   let pf = [...fidsOf(p)];
@@ -160,6 +163,14 @@ function openProductEditor(id) {
     <button class="btn block" data-a="addOpt">＋ Add color option</button>
     <label class="f"><span>Category</span><input class="in" id="eCa" value="${esc(p.category || '')}"></label>
     <label class="f"><span>Description</span><textarea class="in" id="eD">${esc(p.description || '')}</textarea></label>
+    <div class="h2">🎁 Bundle <span class="mut sm">(several items sold together)</span></div>
+    <label class="check"><input type="checkbox" id="eBu" ${bun ? 'checked' : ''}> <span>This is a bundle</span></label>
+    <div id="eBuBox" class="${bun ? '' : 'hide'}">
+      <div class="mut sm" style="margin-bottom:6px">Tick the products you already uploaded:</div>
+      <div id="eBuList">${bunProds.length ? bunProds.map((x) => `<label class="check"><input type="checkbox" data-a="bp" data-id="${esc(x.id)}" ${bunPick.has(x.id) ? 'checked' : ''}> <span>${esc(x.name)} <span class="mut sm">${eur(x.price)}</span></span></label>`).join('') : '<div class="mut sm">No other products yet.</div>'}</div>
+      <label class="f"><span>Other items not uploaded (one per line)</span><textarea class="in" id="eBx" rows="3" placeholder="e.g. Custom keychain">${esc(((bun && bun.extra) || []).join('\n'))}</textarea></label>
+      <div class="row between"><span class="mut sm" id="eBuSum"></span><button type="button" class="btn sm" data-a="bsum">Use total as price</button></div>
+    </div>
     <div class="h2">Personalise <span class="mut sm">(optional)</span></div>
     <label class="check"><input type="checkbox" id="eCu" ${p.custom && p.custom.on ? 'checked' : ''}> <span>Customer types something (name, number…)</span></label>
     <div id="eCuBox" class="${p.custom && p.custom.on ? '' : 'hide'}">
@@ -175,6 +186,11 @@ function openProductEditor(id) {
     ${B.pushAvailable ? `<label class="check"><input type="checkbox" id="eNo" ${old ? '' : 'checked'}> <span>🔔 Notify customers about this product</span></label>` : ''}
     <div class="gap"></div><button class="btn pri block" data-a="save">${old ? 'Save changes' : 'Publish product'}</button>
     ${old ? '<div class="gap-s"></div><button class="btn bad block" data-a="del">Delete product</button>' : ''}`);
+  const bunSum = () => bunProds.filter((x) => bunPick.has(x.id)).reduce((n, x) => n + (+x.price || 0), 0);
+  const bunDraw = () => { $('#eBuSum', s.el).textContent = bunPick.size ? `Total of ticked products: ${eur(bunSum())}` : ''; };
+  bunDraw();
+  $('#eBu', s.el).addEventListener('change', (e) => $('#eBuBox', s.el).classList.toggle('hide', !e.target.checked));
+  $('#eBuList', s.el).addEventListener('change', (e) => { const c = e.target.closest('[data-a=bp]'); if (!c) return; if (c.checked) bunPick.add(c.dataset.id); else bunPick.delete(c.dataset.id); bunDraw(); });
   $('#eCu', s.el).addEventListener('change', (e) => $('#eCuBox', s.el).classList.toggle('hide', !e.target.checked));
   const draw = () => {
     $('#eTh', s.el).innerHTML = imgs.map((u, i) => `<div class="thumb"><img src="${esc(u)}" alt=""><button data-a="rmI" data-i="${i}">✕</button></div>`).join('') +
@@ -243,6 +259,7 @@ function openProductEditor(id) {
     if (a === 'pf') { const v = b.dataset.v; pf = pf.includes(v) ? pf.filter((x) => x !== v) : [...pf, v]; b.classList.toggle('on', pf.includes(v)); }
     if (a === 'of') { const o = opts[+b.dataset.i], v = b.dataset.v; o.filaments = o.filaments.includes(v) ? o.filaments.filter((x) => x !== v) : [...o.filaments, v]; b.classList.toggle('on', o.filaments.includes(v)); }
     if (a === 'openML') { const u = $('#eML', s.el).value.trim(); if (/^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener,noreferrer'); else toast('Paste a link that starts with https://', 3500); }
+    if (a === 'bsum') { $('#eP', s.el).value = String(Math.round(bunSum() * 100) / 100); toast('Price set to the total. Lower it for a discount.', 3500); }
     if (a === 'rmO') { opts.splice(+b.dataset.i, 1); drawOpts(); }
     if (a === 'pickO') { pickIdx = +b.dataset.i; $('#eOF', s.el).click(); }
     if (a === 'rmOI') { opts[+b.dataset.i].images.splice(+b.dataset.j, 1); drawOpts(); }
@@ -270,7 +287,11 @@ function openProductEditor(id) {
           options.push({ name: o.name.trim(), filament: o.filaments[0] || '', filaments: o.filaments, images: oi });
         }
         const published = $('#eV', s.el).checked;
+        const bunExtra = $('#eBx', s.el).value.split(/\n+/).map((x) => x.trim().slice(0, 60)).filter(Boolean).slice(0, 10);
+        const bundle = $('#eBu', s.el).checked ? { pids: [...bunPick].slice(0, 10), extra: bunExtra } : null;
+        if (bundle && bundle.pids.length + bundle.extra.length < 2) { toast('A bundle needs at least 2 items.', 4000); b.disabled = false; b.textContent = old ? 'Save changes' : 'Publish product'; return; }
         const data = {
+          bundle,
           name, price: f.price, listPrice: f.disc ? f.normal : null, cost: num($('#eC', s.el).value), category: $('#eCa', s.el).value.trim(),
           filament: pf[0] || '', filaments: pf, options, colors: options.map((o) => o.name),
           custom: $('#eCu', s.el).checked ? { on: true, label: $('#eCl', s.el).value.trim().slice(0, 80) || 'Your text', max: Math.min(40, Math.max(1, parseInt($('#eCm', s.el).value, 10) || 12)), required: $('#eCr', s.el).value !== '0', img: +$('#eCi', s.el).value || 0 } : null,
@@ -620,7 +641,7 @@ function openOrder(id, focusMsg) {
       <div class="mut sm" style="margin-top:6px">${esc(fmtDay(o.createdAt))}${o.source === 'manual' ? ' · manual sale' : ''}</div></div>
     ${priceWarning(o)}
     <div class="h2">Items</div>
-    <div class="card">${o.items.map((i) => `<div class="row between"><span>${esc(i.name)} × ${i.qty}${i.custom ? `<br><b style="color:var(--acc2)">✍️ ${esc(i.custom)}</b>` : ''}${(i.ccol || []).length ? `<br><b style="color:var(--acc2)">🎨 ${esc(i.ccol.join(', '))}</b>` : ''}${i.cimg ? `<div class="thumbs"><div class="thumb"><img src="${esc(i.cimg)}" data-zoom alt=""></div></div>` : ''}${i.id && modelUrl(i.id) ? `<br><a href="${esc(modelUrl(i.id))}" target="_blank" rel="noopener noreferrer" style="color:var(--acc2)">🔗 Open 3D model ↗</a>` : ''}</span><b class="mono">${eur(i.price * i.qty)}</b></div>`).join('')}
+    <div class="card">${o.items.map((i) => `<div class="row between"><span>${esc(i.name)} × ${i.qty}${i.custom ? `<br><b style="color:var(--acc2)">✍️ ${esc(i.custom)}</b>` : ''}${(i.bun || []).length ? `<br><span class="mut sm">🎁 ${esc(i.bun.join(' + '))}</span>` : ''}${(i.ccol || []).length ? `<br><b style="color:var(--acc2)">🎨 ${esc(i.ccol.join(', '))}</b>` : ''}${i.cimg ? `<div class="thumbs"><div class="thumb"><img src="${esc(i.cimg)}" data-zoom alt=""></div></div>` : ''}${i.id && modelUrl(i.id) ? `<br><a href="${esc(modelUrl(i.id))}" target="_blank" rel="noopener noreferrer" style="color:var(--acc2)">🔗 Open 3D model ↗</a>` : ''}</span><b class="mono">${eur(i.price * i.qty)}</b></div>`).join('')}
       ${o.fee ? `<div class="row between mut"><span>Delivery fee</span><span class="mono">${eur(o.fee)}</span></div>` : ''}
       <div class="sep"></div><div class="row between"><b>Total</b><b class="mono" style="font-size:20px">${eur(o.total)}</b></div></div>
     <div class="h2">Payment</div>
@@ -951,7 +972,7 @@ document.addEventListener('click', async (e) => {
     }
     if (a === 'home') { S.view = 'home'; render(); }
     if (a === 'go') { S.view = b.dataset.v; render(); scrollTo(0, 0); }
-    if (a === 'editProd') openProductEditor(b.dataset.id);
+    if (a === 'editProd') openProductEditor(b.dataset.id, !!b.dataset.bundle);
     if (a === 'filEdit') openFilament(b.dataset.id);
     if (a === 'filOn' || a === 'filLow') {
       const list = filamentsOf(S.settings).map((f) => ({ ...f }));
