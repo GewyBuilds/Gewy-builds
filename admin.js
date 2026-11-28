@@ -169,6 +169,17 @@ const trSave = (el, nameSel, descSel) => {
   if (!n && !d) return null;
   return { [isEl($(nameSel, el).value + $(descSel, el).value) ? 'en' : 'el']: { name: n, description: d } };
 };
+const DIMCSS = '.dimslide{position:relative;flex:0 0 100%;scroll-snap-align:center;aspect-ratio:1/1;border-radius:16px;overflow:hidden;background:var(--bg3)}.dimslide>img{width:100%;height:100%;object-fit:cover;display:block}.dl{position:absolute;pointer-events:none;filter:drop-shadow(0 0 2px rgba(0,0,0,.9))}.dl.h{height:12px;margin-top:-6px;border-left:2px solid #fff;border-right:2px solid #fff}.dl.h::after{content:"";position:absolute;left:0;right:0;top:50%;border-top:2px solid #fff}.dl.v{width:12px;margin-left:-6px;border-top:2px solid #fff;border-bottom:2px solid #fff}.dl.v::after{content:"";position:absolute;top:0;bottom:0;left:50%;border-left:2px solid #fff}.dp{position:absolute;transform:translate(-50%,-50%);background:rgba(0,0,0,.7);color:#fff;font:700 13px/1 system-ui,sans-serif;padding:5px 9px;border-radius:999px;pointer-events:none;white-space:nowrap}';
+{ const st = document.createElement('style'); st.textContent = DIMCSS; document.head.appendChild(st); }
+const dimN = (v, d) => (v === '' || v == null || !Number.isFinite(+v) ? d : +v);
+const dimHtml = (src, d) => {
+  const x1 = dimN(d.x1, 15), x2 = dimN(d.x2, 85), wy = dimN(d.wy, 92), y1 = dimN(d.y1, 15), y2 = dimN(d.y2, 85), hx = dimN(d.hx, 92);
+  return `<div class="dimslide"><img src="${esc(src)}" alt="">`
+    + (+d.w ? `<div class="dl h" style="left:${x1}%;width:${Math.max(x2 - x1, 1)}%;top:${wy}%"></div><div class="dp" style="left:${(x1 + x2) / 2}%;top:${wy > 85 ? wy - 6 : wy + 6}%">${+d.w} mm</div>` : '')
+    + (+d.h ? `<div class="dl v" style="top:${y1}%;height:${Math.max(y2 - y1, 1)}%;left:${hx}%"></div><div class="dp" style="left:${hx > 65 ? hx - 11 : hx + 11}%;top:${(y1 + y2) / 2}%">${+d.h} mm</div>` : '')
+    + (+d.d ? `<div class="dp" style="left:24%;top:7%">Depth ${+d.d} mm</div>` : '')
+    + '</div>';
+};
 function openBundleChooser() {
   const s = sheet(`<div class="hd"><div class="ttl">🎁 New bundle</div><button class="xbtn" data-close>✕</button></div>
     <div class="mut" style="margin:6px 0 14px">What kind of bundle?</div>
@@ -249,6 +260,7 @@ function openProductEditor(id) {
   const p = old || { name: '', price: '', listPrice: 0, cost: '', category: '', colors: [], options: [], filament: '', description: '', images: [], published: true, soldOut: false };
   const imgs = [...(p.images || [])];
   const files = [];
+  let dimDraw = null;
   let pf = [...fidsOf(p)];
   const opts = (old ? optionsOf(p) : []).map((o) => ({ name: o.name, filaments: [...fidsOf(o)], images: [...(o.images || [])], files: [] }));
   const fils = filamentsOf(S.settings);
@@ -283,6 +295,15 @@ function openProductEditor(id) {
       <label class="f"><span>Required?</span><select class="in" id="eCr"><option value="1"${!p.custom || p.custom.required !== false ? ' selected' : ''}>Yes, must fill</option><option value="0"${p.custom && p.custom.required === false ? ' selected' : ''}>No, optional</option></select></label></div>
       <label class="f"><span>Customer can also add an image</span><select class="in" id="eCi"><option value="0"${!p.custom || !p.custom.img ? ' selected' : ''}>No image</option><option value="1"${p.custom && p.custom.img === 1 ? ' selected' : ''}>Yes, optional</option><option value="2"${p.custom && p.custom.img === 2 ? ' selected' : ''}>Yes, must add one</option></select></label>
     </div>
+    <div class="h2">📏 Size <span class="mut sm">(optional, drawn on a photo for you)</span></div>
+    <div class="two"><label class="f"><span>Width (mm)</span><input class="in" id="dW" inputmode="decimal" value="${esc(p.dims && p.dims.w || '')}"></label><label class="f"><span>Height (mm)</span><input class="in" id="dH" inputmode="decimal" value="${esc(p.dims && p.dims.h || '')}"></label></div>
+    <label class="f"><span>Depth (mm) — optional</span><input class="in" id="dD" inputmode="decimal" value="${esc(p.dims && p.dims.d || '')}"></label>
+    <div id="dBox">
+      <label class="f"><span>Draw it on photo number</span><select class="in" id="dI"></select></label>
+      <div id="dPrev"></div>
+      <div class="mut sm" style="margin:8px 0 2px">Move the lines so they sit on your item:</div>
+      ${[['x1', 'Width line: left end', 15], ['x2', 'Width line: right end', 85], ['wy', 'Width line: up / down', 92], ['y1', 'Height line: top end', 15], ['y2', 'Height line: bottom end', 85], ['hx', 'Height line: left / right', 92]].map(([k, l, d]) => `<label class="f"><span>${l}</span><input type="range" min="0" max="100" id="dr_${k}" value="${dimN(p.dims && p.dims[k], d)}"></label>`).join('')}
+    </div>
     <div class="h2">Model link <span class="mut sm">(only you see this)</span></div>
     <div class="row"><input class="in grow" id="eML" type="url" inputmode="url" placeholder="https://…  (Printables, Thingiverse, Drive…)" value="${esc(id ? modelUrl(id) : '')}" autocomplete="off"><button type="button" class="btn sm" data-a="openML">Open ↗</button></div>
     <label class="check"><input type="checkbox" id="eV" ${p.published !== false ? 'checked' : ''}> <span>Visible in the shop</span></label>
@@ -295,7 +316,27 @@ function openProductEditor(id) {
     $('#eTh', s.el).innerHTML = imgs.map((u, i) => `<div class="thumb"><img src="${esc(u)}" alt=""><button data-a="rmI" data-i="${i}">✕</button></div>`).join('') +
       files.map((f, i) => `<div class="thumb"><img src="${URL.createObjectURL(f)}" alt=""><button data-a="rmF" data-i="${i}">✕</button></div>`).join('') +
       (imgs.length + files.length < B.MAX_PHOTOS ? '<button class="addimg" data-a="pick">＋</button>' : '<span class="mut sm" style="align-self:center">max ' + B.MAX_PHOTOS + ' photos</span>');
+    if (dimDraw) dimDraw();
   };
+  const dimVals = () => {
+    const g = (id) => ($('#' + id, s.el) || {}).value;
+    const d = { w: num(g('dW')) || 0, h: num(g('dH')) || 0, d: num(g('dD')) || 0, img: +g('dI') || 0 };
+    ['x1', 'x2', 'wy', 'y1', 'y2', 'hx'].forEach((k) => { d[k] = +g('dr_' + k); });
+    return d;
+  };
+  dimDraw = () => {
+    const sel = $('#dI', s.el), keep = sel.value || String((p.dims && p.dims.img) || 0);
+    const all = [...imgs, ...files];
+    sel.innerHTML = all.map((_, i) => `<option value="${i}">Photo ${i + 1}</option>`).join('');
+    sel.value = +keep < all.length ? keep : '0';
+    const d = dimVals(), on = (d.w || d.h || d.d) && all.length;
+    $('#dBox', s.el).classList.toggle('hide', !(d.w || d.h || d.d));
+    const src = all[+sel.value];
+    $('#dPrev', s.el).innerHTML = on && src ? dimHtml(typeof src === 'string' ? src : URL.createObjectURL(src), d) : '<div class="mut sm">Add a photo first.</div>';
+  };
+  s.el.addEventListener('input', (e) => { if (/^(dW|dH|dD|dr_)/.test(e.target.id || '')) dimDraw(); });
+  s.el.addEventListener('change', (e) => { if (e.target.id === 'dI') dimDraw(); });
+  dimDraw();
   const drawOpts = () => {
     $('#eOpts', s.el).innerHTML = opts.map((o, i) => `<div class="card" style="margin-bottom:8px"><div class="row"><input class="in grow" data-f="name" data-i="${i}" placeholder="Color name, e.g. Red" value="${esc(o.name)}"><button class="xbtn" data-a="rmO" data-i="${i}" aria-label="Remove">🗑</button></div>
       <div class="mut sm" style="margin:6px 0 4px">Filaments for this color (tap all it uses)</div>${filChips(o.filaments, `data-a="of" data-i="${i}"`)}
@@ -388,6 +429,7 @@ function openProductEditor(id) {
         const published = $('#eV', s.el).checked;
         const data = {
           tr: trSave(s.el, '#eN', '#eD'),
+          dims: (dimVals().w || dimVals().h || dimVals().d) ? dimVals() : null,
           name, price: f.price, listPrice: f.disc ? f.normal : null, cost: num($('#eC', s.el).value), category: $('#eCa', s.el).value.trim(),
           filament: pf[0] || '', filaments: pf, options, colors: options.map((o) => o.name),
           custom: $('#eCu', s.el).checked ? { on: true, label: $('#eCl', s.el).value.trim().slice(0, 80) || 'Your text', max: Math.min(40, Math.max(1, parseInt($('#eCm', s.el).value, 10) || 12)), required: $('#eCr', s.el).value !== '0', img: +$('#eCi', s.el).value || 0 } : null,

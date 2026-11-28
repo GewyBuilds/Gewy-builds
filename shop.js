@@ -298,6 +298,17 @@ function viewShop() {
   return h;
 }
 
+const DIMCSS = '.dimslide{position:relative;flex:0 0 100%;scroll-snap-align:center;aspect-ratio:1/1;border-radius:16px;overflow:hidden;background:var(--bg3)}.dimslide>img{width:100%;height:100%;object-fit:cover;display:block}.dl{position:absolute;pointer-events:none;filter:drop-shadow(0 0 2px rgba(0,0,0,.9))}.dl.h{height:12px;margin-top:-6px;border-left:2px solid #fff;border-right:2px solid #fff}.dl.h::after{content:"";position:absolute;left:0;right:0;top:50%;border-top:2px solid #fff}.dl.v{width:12px;margin-left:-6px;border-top:2px solid #fff;border-bottom:2px solid #fff}.dl.v::after{content:"";position:absolute;top:0;bottom:0;left:50%;border-left:2px solid #fff}.dp{position:absolute;transform:translate(-50%,-50%);background:rgba(0,0,0,.7);color:#fff;font:700 13px/1 system-ui,sans-serif;padding:5px 9px;border-radius:999px;pointer-events:none;white-space:nowrap}';
+{ const st = document.createElement('style'); st.textContent = DIMCSS; document.head.appendChild(st); }
+const dimN = (v, d) => (v === '' || v == null || !Number.isFinite(+v) ? d : +v);
+const dimHtml = (src, d) => {
+  const x1 = dimN(d.x1, 15), x2 = dimN(d.x2, 85), wy = dimN(d.wy, 92), y1 = dimN(d.y1, 15), y2 = dimN(d.y2, 85), hx = dimN(d.hx, 92);
+  return `<div class="dimslide"><img src="${esc(src)}" alt="">`
+    + (+d.w ? `<div class="dl h" style="left:${x1}%;width:${Math.max(x2 - x1, 1)}%;top:${wy}%"></div><div class="dp" style="left:${(x1 + x2) / 2}%;top:${wy > 85 ? wy - 6 : wy + 6}%">${+d.w} mm</div>` : '')
+    + (+d.h ? `<div class="dl v" style="top:${y1}%;height:${Math.max(y2 - y1, 1)}%;left:${hx}%"></div><div class="dp" style="left:${hx > 65 ? hx - 11 : hx + 11}%;top:${(y1 + y2) / 2}%">${+d.h} mm</div>` : '')
+    + (+d.d ? `<div class="dp" style="left:24%;top:7%">Depth ${+d.d} mm</div>` : '')
+    + '</div>';
+};
 const isEl = (x) => /[\u0370-\u03ff\u1f00-\u1fff]/.test(x || '');
 const TRM = new Map(), TRBAD = new Set();
 const trHash = (x) => { let h = 5381; for (const c of String(x)) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36); };
@@ -398,7 +409,7 @@ function openProduct(id) {
     const imgs = c && c.images && c.images.length ? c.images : p.images || [];
     s.el.innerHTML = `
     <div class="hd"><div class="ttl">${esc(loc(p, 'name'))}</div><button class="xbtn" data-close>✕</button></div>
-    ${imgs.length ? `<div class="gal">${imgs.map((u) => `<img src="${esc(u)}" alt="" data-zoom>`).join('')}</div>` : ''}
+    ${imgs.length ? `<div class="gal">${imgs.map((u) => `<img src="${esc(u)}" alt="" data-zoom>`).join('')}${p.dims && (+p.dims.w || +p.dims.h || +p.dims.d) ? dimHtml(imgs[Math.min(+p.dims.img || 0, imgs.length - 1)], p.dims) : ''}</div>` : ''}
     <div class="row between" style="margin-top:12px"><div class="mono" style="font-size:22px;color:var(--acc2);font-weight:800">${priceHtml(p)}${wasPrice(p) ? ` <span class="chip acc">−${pctOff(p)}%</span>` : ''}</div>${out ? `<span class="chip bad">${esc(t('soldOut'))}</span>` : low ? `<span class="chip warn">${esc(t('lowStock'))}</span>` : ''}</div>
     ${p.bundle ? `<div class="card" style="margin-top:10px"><b>🎁 ${esc(t('includes'))}</b><ul style="margin:6px 0 0;padding-left:20px">${bunNames(p).map((n) => `<li>${esc(n)}</li>`).join('')}</ul></div>` : ''}
     ${loc(p, 'description') ? `<p style="white-space:pre-wrap">${esc(loc(p, 'description'))}</p>` : ''}
