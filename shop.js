@@ -293,10 +293,65 @@ function viewShop() {
   h += `<input class="in" id="shopQ" type="search" placeholder="🔍 ${esc(t('searchP'))}" autocomplete="off" style="margin-bottom:14px">`;
   const list = tab === 'bundles' ? bundles : singles;
   h += list.length ? `<div class="grid${enter ? ' enter' : ''}">${list.map(prodCard).join('')}</div><div class="empty hide" id="noMatch">${esc(t('noMatch'))}</div>` : `<div class="empty">${esc(tab === 'bundles' ? t('noBundles') : t('noProducts'))}</div>`;
+  queueTr(list);
   h += `<p class="mut sm" style="text-align:center;margin:22px 0 6px">${esc(t('trust'))}</p>`;
   return h;
 }
 
+const isEl = (x) => /[\u0370-\u03ff\u1f00-\u1fff]/.test(x || '');
+const TRM = new Map(), TRBAD = new Set();
+const trHash = (x) => { let h = 5381; for (const c of String(x)) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36); };
+const trKey = (p, f) => 'gewy:tr:' + lang + ':' + p.id + ':' + f + ':' + trHash(p[f] || '');
+const srcLang = (p) => (isEl((p.name || '') + (p.description || '')) ? 'el' : 'en');
+const loc = (p, f) => {
+  if (!p) return '';
+  const r = p.tr && p.tr[lang];
+  if (r && r[f]) return r[f];
+  if (!p[f] || srcLang(p) === lang) return p[f] || '';
+  const k = trKey(p, f);
+  if (!TRM.has(k)) { try { TRM.set(k, localStorage.getItem(k) || ''); } catch { TRM.set(k, ''); } }
+  return TRM.get(k) || p[f];
+};
+const needsTr = (p, f) => !!p && !!p[f] && srcLang(p) !== lang && !(p.tr && p.tr[lang] && p.tr[lang][f]) && !TRM.get(trKey(p, f)) && !TRBAD.has(trKey(p, f));
+async function mtShop(text, from, to) {
+  const parts = String(text).match(/[^.!?;\n]+[.!?;\n]*/g) || [String(text)];
+  const chunks = []; let cur = '';
+  for (const q of parts) { if ((cur + q).length > 450 && cur) { chunks.push(cur); cur = ''; } cur += q; }
+  if (cur.trim()) chunks.push(cur);
+  let out = '';
+  for (const c of chunks) {
+    const r = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(c.trim().slice(0, 480)) + '&langpair=' + from + '|' + to);
+    const j = await r.json();
+    const tx = j && j.responseData && j.responseData.translatedText;
+    if (!tx || +j.responseStatus !== 200 || /MYMEMORY WARNING/i.test(tx)) throw new Error('translate');
+    out += (out ? ' ' : '') + tx;
+  }
+  return out;
+}
+let trTimer = 0, trBusy = false;
+async function ensureTr(p, f) {
+  if (!needsTr(p, f)) return false;
+  const k = trKey(p, f);
+  try {
+    const out = await mtShop(p[f], srcLang(p), lang);
+    TRM.set(k, out);
+    try { localStorage.setItem(k, out); } catch {}
+    return true;
+  } catch { TRBAD.add(k); return false; }
+}
+function queueTr(list) {
+  if (trBusy || !navigator.onLine) return;
+  const todo = list.filter((p) => needsTr(p, 'name')).slice(0, 40);
+  if (!todo.length) return;
+  trBusy = true;
+  const start = lang;
+  (async () => {
+    let n = 0;
+    for (const p of todo) { if (lang !== start) break; if (await ensureTr(p, 'name')) n++; }
+    trBusy = false;
+    if (n && lang === start) { const q = $('#shopQ'); if (!q || !q.value) renderMain(); }
+  })();
+}
 const bunNames = (p) => (p && p.bundle ? [...(p.bundle.pids || []).map((id) => (S.products.find((x) => x.id === id) || {}).name).filter(Boolean), ...(p.bundle.extra || [])] : []);
 const bunOut = (p) => !!(p && p.bundle && (p.bundle.pids || []).some((id) => { const c = S.products.find((x) => x.id === id); return c && stockOf(c, S.settings).out; }));
 const skOf = (p) => { const sk = stockOf(p, S.settings); return bunOut(p) ? { ...sk, out: true } : sk; };
@@ -305,11 +360,11 @@ function prodCard(p) {
   const img = p.images && p.images[0];
   const fresh = Date.now() - (p.createdAt || 0) < 72 * 3600 * 1000;
   const sk = skOf(p);
-  return `<button class="prod${sk.out ? ' oos' : ''}" data-s="${esc((p.name + ' ' + (p.category || '') + ' ' + bunNames(p).join(' ')).toLowerCase())}" data-act="open" data-id="${esc(p.id)}">
-    <div class="ph">${img ? `<img src="${esc(img)}" alt="${esc(p.name)}" loading="lazy">` : '<div class="noimg">🧩</div>'}</div>
+  return `<button class="prod${sk.out ? ' oos' : ''}" data-s="${esc((p.name + ' ' + (p.tr ? Object.values(p.tr).map((x) => (x && x.name) || '').join(' ') : '') + ' ' + (p.category || '') + ' ' + bunNames(p).join(' ')).toLowerCase())}" data-act="open" data-id="${esc(p.id)}">
+    <div class="ph">${img ? `<img src="${esc(img)}" alt="${esc(loc(p, 'name'))}" loading="lazy">` : '<div class="noimg">🧩</div>'}</div>
     ${sk.out ? `<span class="chip bad tag">${esc(t('soldOut'))}</span>` : sk.low ? `<span class="chip warn tag">${esc(t('lowStock'))}</span>` : fresh ? `<span class="chip acc tag">${esc(t('new'))}</span>` : ''}
     ${wasPrice(p) && !sk.out ? `<span class="chip acc off">−${pctOff(p)}%</span>` : ''}
-    <div class="meta"><div class="nm">${esc(p.name)}</div>${p.bundle ? `<div class="mut sm" style="font-size:11px">🎁 ${esc(bunNames(p).join(' + '))}</div>` : ''}<div class="pr">${priceHtml(p)}</div></div></button>`;
+    <div class="meta"><div class="nm">${esc(loc(p, 'name'))}</div>${p.bundle ? `<div class="mut sm" style="font-size:11px">🎁 ${esc(bunNames(p).join(' + '))}</div>` : ''}<div class="pr">${priceHtml(p)}</div></div></button>`;
 }
 
 const productLink = (id) => new URL('./', location.href).href + 'index.html?p=' + encodeURIComponent(id) + '&src=share';
@@ -342,11 +397,11 @@ function openProduct(id) {
     const c = cur();
     const imgs = c && c.images && c.images.length ? c.images : p.images || [];
     s.el.innerHTML = `
-    <div class="hd"><div class="ttl">${esc(p.name)}</div><button class="xbtn" data-close>✕</button></div>
+    <div class="hd"><div class="ttl">${esc(loc(p, 'name'))}</div><button class="xbtn" data-close>✕</button></div>
     ${imgs.length ? `<div class="gal">${imgs.map((u) => `<img src="${esc(u)}" alt="" data-zoom>`).join('')}</div>` : ''}
     <div class="row between" style="margin-top:12px"><div class="mono" style="font-size:22px;color:var(--acc2);font-weight:800">${priceHtml(p)}${wasPrice(p) ? ` <span class="chip acc">−${pctOff(p)}%</span>` : ''}</div>${out ? `<span class="chip bad">${esc(t('soldOut'))}</span>` : low ? `<span class="chip warn">${esc(t('lowStock'))}</span>` : ''}</div>
     ${p.bundle ? `<div class="card" style="margin-top:10px"><b>🎁 ${esc(t('includes'))}</b><ul style="margin:6px 0 0;padding-left:20px">${bunNames(p).map((n) => `<li>${esc(n)}</li>`).join('')}</ul></div>` : ''}
-    ${p.description ? `<p style="white-space:pre-wrap">${esc(p.description)}</p>` : ''}
+    ${loc(p, 'description') ? `<p style="white-space:pre-wrap">${esc(loc(p, 'description'))}</p>` : ''}
     ${opts.length ? `<div class="h2">${esc(t('color'))}</div><div class="chips" id="cols">${opts.map((x, i) => `<button class="pill${i === oi ? ' on' : ''}${sk.opts[i].out ? ' off' : ''}" data-a="color" data-i="${i}">${esc(x.name)}${sk.opts[i].out ? ' · ' + esc(t('soldOut')) : ''}</button>`).join('')}</div>` : ''}
     ${cu && !out ? `<div class="h2">${esc(cu.label || t('yourText'))}${cu.required === false ? '' : ' *'}</div><input class="in" id="cust" maxlength="${cmax}" value="${esc(ctext)}" autocomplete="off"><div class="mut sm" style="margin-top:4px">${esc(t('maxLetters', { n: cmax }))}</div>` : ''}
     ${cu && cu.img && !out ? `<div class="h2">📷 ${esc(t('yourImage'))}${cu.img === 2 ? ' *' : ''}</div><div class="thumbs">${cimg ? `<div class="thumb"><img src="${cimg}" alt=""><button data-a="cimgX">✕</button></div>` : '<button class="addimg" data-a="cimgPick">＋</button>'}</div><input type="file" id="cimgF" accept="image/*" class="hide"><div class="mut sm" style="margin-top:4px">${esc(t('imageHint'))}</div>` : ''}
@@ -361,6 +416,7 @@ function openProduct(id) {
     <div class="gap-s"></div><button class="btn ghost block sm" data-a="share">🔗 ${esc(t('share'))}</button>`;
   };
   draw();
+  ensureTr(p, 'description').then((ok) => { if (ok && s.el.isConnected) draw(); });
   const item = () => {
     const c = cur();
     const col = c ? c.name : '';

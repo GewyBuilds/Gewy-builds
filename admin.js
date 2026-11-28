@@ -130,6 +130,45 @@ const bumpCat = () => B.set('settings', 'shop', { catRev: Date.now() }).catch((e
 // The private link to the 3D model lives in its own admin-only collection (never inside the public product), so customers can never read it.
 const modelUrl = (pid) => ((S.modelLinks || []).find((x) => x.id === pid) || {}).url || '';
 
+const isEl = (x) => /[\u0370-\u03ff\u1f00-\u1fff]/.test(x || '');
+async function mt(text, from, to) {
+  const parts = String(text).match(/[^.!?;\n]+[.!?;\n]*/g) || [String(text)];
+  const chunks = [];
+  let cur = '';
+  for (const p of parts) { if ((cur + p).length > 450 && cur) { chunks.push(cur); cur = ''; } cur += p; }
+  if (cur.trim()) chunks.push(cur);
+  let out = '';
+  for (const c of chunks) {
+    const r = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(c.trim().slice(0, 480)) + '&langpair=' + from + '|' + to);
+    const j = await r.json();
+    if (!j || !j.responseData || +j.responseStatus !== 200 || /MYMEMORY WARNING/i.test(j.responseData.translatedText || '')) throw new Error((j && j.responseDetails) || 'Translation failed');
+    out += (out ? ' ' : '') + j.responseData.translatedText;
+  }
+  return out;
+}
+const trCur = (p) => { const t = (p && p.tr) || {}; const k = t.en ? 'en' : t.el ? 'el' : ''; return k ? { k, ...t[k] } : { k: '', name: '', description: '' }; };
+const trHtml = (p) => { const c = trCur(p); return `<div class="h2">🌐 Translation <span class="mut sm">(shown to customers who use the other language)</span></div>
+    <button type="button" class="btn block" data-a="trans">🌐 Translate</button>
+    <label class="f"><span>Name <span id="tLang" class="mut sm">${c.k ? '(' + c.k.toUpperCase() + ')' : ''}</span></span><input class="in" id="tN" value="${esc(c.name || '')}"></label>
+    <label class="f"><span>Description</span><textarea class="in" id="tD" rows="3">${esc(c.description || '')}</textarea></label>`; };
+async function trRun(el, nameSel, descSel) {
+  const name = $(nameSel, el).value.trim(), desc = $(descSel, el).value.trim();
+  if (!name && !desc) return toast('Write the name first.');
+  const from = isEl(name + desc) ? 'el' : 'en', to = from === 'el' ? 'en' : 'el';
+  const btn = $('[data-a=trans]', el); btn.disabled = true; btn.textContent = 'Translating…';
+  try {
+    if (name) $('#tN', el).value = await mt(name, from, to);
+    if (desc) $('#tD', el).value = await mt(desc, from, to);
+    $('#tLang', el).textContent = '(' + to.toUpperCase() + ')';
+    toast('Translated. Check it and fix anything you like.', 4000);
+  } catch (err) { console.error(err); toast('Could not translate. You can type it yourself.', 4500); }
+  btn.disabled = false; btn.textContent = '🌐 Translate';
+}
+const trSave = (el, nameSel, descSel) => {
+  const n = $('#tN', el).value.trim(), d = $('#tD', el).value.trim();
+  if (!n && !d) return null;
+  return { [isEl($(nameSel, el).value + $(descSel, el).value) ? 'en' : 'el']: { name: n, description: d } };
+};
 function openBundleChooser() {
   const s = sheet(`<div class="hd"><div class="ttl">🎁 New bundle</div><button class="xbtn" data-close>✕</button></div>
     <div class="mut" style="margin:6px 0 14px">What kind of bundle?</div>
@@ -162,6 +201,7 @@ function openBundleForm(id, mode) {
     <div class="h2">Photo of them together</div>
     <div class="thumbs" id="bTh"></div><input type="file" id="bF" accept="image/*" class="hide">
     <label class="f"><span>Description (optional)</span><textarea class="in" id="bD" rows="2">${esc(old ? old.description || '' : '')}</textarea></label>
+    ${trHtml(old)}
     <label class="check"><input type="checkbox" id="bV" ${!old || old.published !== false ? 'checked' : ''}> <span>Visible in the shop</span></label>
     <div class="gap"></div><button class="btn pri block" data-a="save">${old ? 'Save changes' : 'Publish bundle'}</button>
     ${old ? '<div class="gap-s"></div><button class="btn bad block" data-a="del">Delete bundle</button>' : ''}`);
@@ -175,6 +215,7 @@ function openBundleForm(id, mode) {
     const b = e.target.closest('[data-a]');
     if (!b) return;
     const a = b.dataset.a;
+    if (a === 'trans') return trRun(s.el, '#bN', '#bD');
     if (a === 'bpick') $('#bF', s.el).click();
     if (a === 'bx') { file = null; img = ''; drawTh(); }
     if (a === 'bsum') { $('#bP', s.el).value = String(Math.round(sum() * 100) / 100); toast('Price set to the total. Lower it for a discount.', 3500); }
@@ -192,6 +233,7 @@ function openBundleForm(id, mode) {
         const url = file ? await B.uploadImage(file, 'products') : img;
         const costs = prods.filter((x) => pick.has(x.id));
         const data = {
+          tr: trSave(s.el, '#bN', '#bD'),
           name, price, listPrice: null, cost: costs.length === pids.length ? costs.reduce((n, x) => n + (+x.cost || 0), 0) : 0, category: '',
           filament: '', filaments: [], options: [], colors: [], custom: null, description: $('#bD', s.el).value.trim(), images: url ? [url] : [],
           published: $('#bV', s.el).checked, soldOut: false, bundle: { pids, extra }, updatedAt: Date.now(),
@@ -232,6 +274,7 @@ function openProductEditor(id) {
     <button class="btn block" data-a="addOpt">＋ Add color option</button>
     <label class="f"><span>Category</span><input class="in" id="eCa" value="${esc(p.category || '')}"></label>
     <label class="f"><span>Description</span><textarea class="in" id="eD">${esc(p.description || '')}</textarea></label>
+    ${trHtml(p)}
     <div class="h2">Personalise <span class="mut sm">(optional)</span></div>
     <label class="check"><input type="checkbox" id="eCu" ${p.custom && p.custom.on ? 'checked' : ''}> <span>Customer types something (name, number…)</span></label>
     <div id="eCuBox" class="${p.custom && p.custom.on ? '' : 'hide'}">
@@ -319,6 +362,7 @@ function openProductEditor(id) {
     if (a === 'pickO') { pickIdx = +b.dataset.i; $('#eOF', s.el).click(); }
     if (a === 'rmOI') { opts[+b.dataset.i].images.splice(+b.dataset.j, 1); drawOpts(); }
     if (a === 'rmOF') { opts[+b.dataset.i].files.splice(+b.dataset.j, 1); drawOpts(); }
+    if (a === 'trans') return trRun(s.el, '#eN', '#eD');
     if (a === 'del') {
       if (!confirm('Delete this product for good?')) return;
       await B.del('products', id); await B.del('modelLinks', id).catch(() => {}); await bumpCat(); s.close(); toast('Deleted');
@@ -343,6 +387,7 @@ function openProductEditor(id) {
         }
         const published = $('#eV', s.el).checked;
         const data = {
+          tr: trSave(s.el, '#eN', '#eD'),
           name, price: f.price, listPrice: f.disc ? f.normal : null, cost: num($('#eC', s.el).value), category: $('#eCa', s.el).value.trim(),
           filament: pf[0] || '', filaments: pf, options, colors: options.map((o) => o.name),
           custom: $('#eCu', s.el).checked ? { on: true, label: $('#eCl', s.el).value.trim().slice(0, 80) || 'Your text', max: Math.min(40, Math.max(1, parseInt($('#eCm', s.el).value, 10) || 12)), required: $('#eCr', s.el).value !== '0', img: +$('#eCi', s.el).value || 0 } : null,
