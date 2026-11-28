@@ -84,7 +84,7 @@ function pushNudge() {
 /* ------------------------------------------------------------- products */
 function viewProducts() {
   const rows = [...S.products].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  frame('PRODUCTS', `<div class="gap"></div><div class="two"><button class="btn pri block" data-act="editProd" data-id="">＋ Add product</button><button class="btn block" data-act="editProd" data-id="" data-bundle="1">🎁 New bundle</button></div><div class="gap"></div>
+  frame('PRODUCTS', `<div class="gap"></div><div class="two"><button class="btn pri block" data-act="editProd" data-id="">＋ Add product</button><button class="btn block" data-act="newBundle">🎁 New bundle</button></div><div class="gap"></div>
     ${rows.length ? rows.map((p) => {
       const margin = p.cost ? ` · profit ${eur(p.price - p.cost)}` : '';
       return `<button class="card prod" style="padding:10px" data-act="editProd" data-id="${esc(p.id)}"><div class="row">
@@ -130,12 +130,81 @@ const bumpCat = () => B.set('settings', 'shop', { catRev: Date.now() }).catch((e
 // The private link to the 3D model lives in its own admin-only collection (never inside the public product), so customers can never read it.
 const modelUrl = (pid) => ((S.modelLinks || []).find((x) => x.id === pid) || {}).url || '';
 
-function openProductEditor(id, asBundle) {
+function openBundleChooser() {
+  const s = sheet(`<div class="hd"><div class="ttl">🎁 New bundle</div><button class="xbtn" data-close>✕</button></div>
+    <div class="mut" style="margin:6px 0 14px">What kind of bundle?</div>
+    <button class="btn pri block" style="padding:18px" data-a="prod">📦 From my products<div class="sm" style="font-weight:400;opacity:.8">Pick 2 or more already uploaded</div></button>
+    <div class="gap-s"></div>
+    <button class="btn block" style="padding:18px" data-a="custom">✏️ Custom bundle<div class="sm" style="font-weight:400;opacity:.8">Items you have not uploaded</div></button>`);
+  s.el.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-a]');
+    if (!b) return;
+    s.close();
+    openBundleForm('', b.dataset.a);
+  });
+}
+function openBundleForm(id, mode) {
+  const old = S.products.find((p) => p.id === id);
+  const bu = (old && old.bundle) || { pids: [], extra: [] };
+  const showP = mode === 'prod' || (bu.pids || []).length > 0;
+  const showX = mode === 'custom' || (bu.extra || []).length > 0;
+  const pick = new Set(bu.pids || []);
+  const prods = S.products.filter((x) => !x.bundle).sort((x, y) => String(x.name).localeCompare(String(y.name)));
+  let img = (old && old.images && old.images[0]) || '';
+  let file = null;
+  const s = sheet(`
+    <div class="hd"><div class="ttl">${old ? 'Edit bundle' : mode === 'custom' ? '✏️ Custom bundle' : '📦 Bundle from my products'}</div><button class="xbtn" data-close>✕</button></div>
+    ${showP ? `<div class="h2">Pick products <span class="mut sm">(2 or more)</span></div><div id="bList">${prods.length ? prods.map((x) => `<label class="check"><input type="checkbox" data-id="${esc(x.id)}" ${pick.has(x.id) ? 'checked' : ''}> <span>${esc(x.name)} <span class="mut sm">${eur(x.price)}</span></span></label>`).join('') : '<div class="mut sm">No products uploaded yet.</div>'}</div>
+      <div class="row between" style="margin:6px 0"><span class="mut sm" id="bSum"></span><button type="button" class="btn sm" data-a="bsum">Use total as price</button></div>` : ''}
+    ${showX ? `<label class="f"><span>${showP ? 'Other items not uploaded' : 'Items'} (one per line${showP ? '' : ', at least 2'})</span><textarea class="in" id="bX" rows="4" placeholder="Controller stand&#10;Headset hook">${esc((bu.extra || []).join('\n'))}</textarea></label>` : ''}
+    <label class="f"><span>Bundle name</span><input class="in" id="bN" value="${esc(old ? old.name : '')}"></label>
+    <label class="f"><span>Price (${esc(CFG.currency || 'EUR')})</span><input class="in" id="bP" inputmode="decimal" value="${esc(old ? old.price : '')}"></label>
+    <div class="h2">Photo of them together</div>
+    <div class="thumbs" id="bTh"></div><input type="file" id="bF" accept="image/*" class="hide">
+    <label class="f"><span>Description (optional)</span><textarea class="in" id="bD" rows="2">${esc(old ? old.description || '' : '')}</textarea></label>
+    <label class="check"><input type="checkbox" id="bV" ${!old || old.published !== false ? 'checked' : ''}> <span>Visible in the shop</span></label>
+    <div class="gap"></div><button class="btn pri block" data-a="save">${old ? 'Save changes' : 'Publish bundle'}</button>
+    ${old ? '<div class="gap-s"></div><button class="btn bad block" data-a="del">Delete bundle</button>' : ''}`);
+  const sum = () => prods.filter((x) => pick.has(x.id)).reduce((n, x) => n + (+x.price || 0), 0);
+  const drawSum = () => { const el = $('#bSum', s.el); if (el) el.textContent = pick.size ? `Total of ticked products: ${eur(sum())}` : ''; };
+  const drawTh = () => { $('#bTh', s.el).innerHTML = (file || img) ? `<div class="thumb"><img src="${file ? URL.createObjectURL(file) : esc(img)}" alt=""><button data-a="bx">✕</button></div>` : '<button class="addimg" data-a="bpick">＋</button>'; };
+  drawSum(); drawTh();
+  $('#bF', s.el).addEventListener('change', (e) => { if (e.target.files[0]) { file = e.target.files[0]; drawTh(); } e.target.value = ''; });
+  s.el.addEventListener('change', (e) => { const c = e.target.closest('#bList input'); if (!c) return; if (c.checked) pick.add(c.dataset.id); else pick.delete(c.dataset.id); drawSum(); });
+  s.el.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-a]');
+    if (!b) return;
+    const a = b.dataset.a;
+    if (a === 'bpick') $('#bF', s.el).click();
+    if (a === 'bx') { file = null; img = ''; drawTh(); }
+    if (a === 'bsum') { $('#bP', s.el).value = String(Math.round(sum() * 100) / 100); toast('Price set to the total. Lower it for a discount.', 3500); }
+    if (a === 'del') { if (!confirm('Delete this bundle?')) return; await B.del('products', id); await bumpCat(); s.close(); toast('Deleted'); }
+    if (a === 'save') {
+      const name = $('#bN', s.el).value.trim();
+      const price = num($('#bP', s.el).value);
+      const extra = showX ? $('#bX', s.el).value.split(/\n+/).map((x) => x.trim().slice(0, 60)).filter(Boolean).slice(0, 10) : [];
+      const pids = [...pick].slice(0, 10);
+      if (!name) return toast('Add a name.');
+      if (pids.length + extra.length < 2) return toast('A bundle needs at least 2 items.', 4000);
+      if (!(price > 0)) return toast('Add a price.');
+      b.disabled = true; b.textContent = 'Saving…';
+      try {
+        const url = file ? await B.uploadImage(file, 'products') : img;
+        const costs = prods.filter((x) => pick.has(x.id));
+        const data = {
+          name, price, listPrice: null, cost: costs.length === pids.length ? costs.reduce((n, x) => n + (+x.cost || 0), 0) : 0, category: '',
+          filament: '', filaments: [], options: [], colors: [], custom: null, description: $('#bD', s.el).value.trim(), images: url ? [url] : [],
+          published: $('#bV', s.el).checked, soldOut: false, bundle: { pids, extra }, updatedAt: Date.now(),
+        };
+        if (old) await B.set('products', id, data); else await B.add('products', { ...data, createdAt: Date.now() });
+        await bumpCat(); s.close(); toast('Saved');
+      } catch (err) { console.error(err); toast('Could not save: ' + (err.code || err.message)); b.disabled = false; b.textContent = old ? 'Save changes' : 'Publish bundle'; }
+    }
+  });
+}
+function openProductEditor(id) {
   const old = S.products.find((p) => p.id === id);
   const p = old || { name: '', price: '', listPrice: 0, cost: '', category: '', colors: [], options: [], filament: '', description: '', images: [], published: true, soldOut: false };
-  const bun = p.bundle || (asBundle ? { pids: [], extra: [] } : null);
-  const bunPick = new Set((bun && bun.pids) || []);
-  const bunProds = S.products.filter((x) => !x.bundle && x.id !== id).sort((x, y) => String(x.name).localeCompare(String(y.name)));
   const imgs = [...(p.images || [])];
   const files = [];
   let pf = [...fidsOf(p)];
@@ -163,14 +232,6 @@ function openProductEditor(id, asBundle) {
     <button class="btn block" data-a="addOpt">＋ Add color option</button>
     <label class="f"><span>Category</span><input class="in" id="eCa" value="${esc(p.category || '')}"></label>
     <label class="f"><span>Description</span><textarea class="in" id="eD">${esc(p.description || '')}</textarea></label>
-    <div class="h2">🎁 Bundle <span class="mut sm">(several items sold together)</span></div>
-    <label class="check"><input type="checkbox" id="eBu" ${bun ? 'checked' : ''}> <span>This is a bundle</span></label>
-    <div id="eBuBox" class="${bun ? '' : 'hide'}">
-      <div class="mut sm" style="margin-bottom:6px">Tick the products you already uploaded:</div>
-      <div id="eBuList">${bunProds.length ? bunProds.map((x) => `<label class="check"><input type="checkbox" data-a="bp" data-id="${esc(x.id)}" ${bunPick.has(x.id) ? 'checked' : ''}> <span>${esc(x.name)} <span class="mut sm">${eur(x.price)}</span></span></label>`).join('') : '<div class="mut sm">No other products yet.</div>'}</div>
-      <label class="f"><span>Other items not uploaded (one per line)</span><textarea class="in" id="eBx" rows="3" placeholder="e.g. Custom keychain">${esc(((bun && bun.extra) || []).join('\n'))}</textarea></label>
-      <div class="row between"><span class="mut sm" id="eBuSum"></span><button type="button" class="btn sm" data-a="bsum">Use total as price</button></div>
-    </div>
     <div class="h2">Personalise <span class="mut sm">(optional)</span></div>
     <label class="check"><input type="checkbox" id="eCu" ${p.custom && p.custom.on ? 'checked' : ''}> <span>Customer types something (name, number…)</span></label>
     <div id="eCuBox" class="${p.custom && p.custom.on ? '' : 'hide'}">
@@ -186,11 +247,6 @@ function openProductEditor(id, asBundle) {
     ${B.pushAvailable ? `<label class="check"><input type="checkbox" id="eNo" ${old ? '' : 'checked'}> <span>🔔 Notify customers about this product</span></label>` : ''}
     <div class="gap"></div><button class="btn pri block" data-a="save">${old ? 'Save changes' : 'Publish product'}</button>
     ${old ? '<div class="gap-s"></div><button class="btn bad block" data-a="del">Delete product</button>' : ''}`);
-  const bunSum = () => bunProds.filter((x) => bunPick.has(x.id)).reduce((n, x) => n + (+x.price || 0), 0);
-  const bunDraw = () => { $('#eBuSum', s.el).textContent = bunPick.size ? `Total of ticked products: ${eur(bunSum())}` : ''; };
-  bunDraw();
-  $('#eBu', s.el).addEventListener('change', (e) => $('#eBuBox', s.el).classList.toggle('hide', !e.target.checked));
-  $('#eBuList', s.el).addEventListener('change', (e) => { const c = e.target.closest('[data-a=bp]'); if (!c) return; if (c.checked) bunPick.add(c.dataset.id); else bunPick.delete(c.dataset.id); bunDraw(); });
   $('#eCu', s.el).addEventListener('change', (e) => $('#eCuBox', s.el).classList.toggle('hide', !e.target.checked));
   const draw = () => {
     $('#eTh', s.el).innerHTML = imgs.map((u, i) => `<div class="thumb"><img src="${esc(u)}" alt=""><button data-a="rmI" data-i="${i}">✕</button></div>`).join('') +
@@ -259,7 +315,6 @@ function openProductEditor(id, asBundle) {
     if (a === 'pf') { const v = b.dataset.v; pf = pf.includes(v) ? pf.filter((x) => x !== v) : [...pf, v]; b.classList.toggle('on', pf.includes(v)); }
     if (a === 'of') { const o = opts[+b.dataset.i], v = b.dataset.v; o.filaments = o.filaments.includes(v) ? o.filaments.filter((x) => x !== v) : [...o.filaments, v]; b.classList.toggle('on', o.filaments.includes(v)); }
     if (a === 'openML') { const u = $('#eML', s.el).value.trim(); if (/^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener,noreferrer'); else toast('Paste a link that starts with https://', 3500); }
-    if (a === 'bsum') { $('#eP', s.el).value = String(Math.round(bunSum() * 100) / 100); toast('Price set to the total. Lower it for a discount.', 3500); }
     if (a === 'rmO') { opts.splice(+b.dataset.i, 1); drawOpts(); }
     if (a === 'pickO') { pickIdx = +b.dataset.i; $('#eOF', s.el).click(); }
     if (a === 'rmOI') { opts[+b.dataset.i].images.splice(+b.dataset.j, 1); drawOpts(); }
@@ -287,11 +342,8 @@ function openProductEditor(id, asBundle) {
           options.push({ name: o.name.trim(), filament: o.filaments[0] || '', filaments: o.filaments, images: oi });
         }
         const published = $('#eV', s.el).checked;
-        const bunExtra = $('#eBx', s.el).value.split(/\n+/).map((x) => x.trim().slice(0, 60)).filter(Boolean).slice(0, 10);
-        const bundle = $('#eBu', s.el).checked ? { pids: [...bunPick].slice(0, 10), extra: bunExtra } : null;
         if (bundle && bundle.pids.length + bundle.extra.length < 2) { toast('A bundle needs at least 2 items.', 4000); b.disabled = false; b.textContent = old ? 'Save changes' : 'Publish product'; return; }
         const data = {
-          bundle,
           name, price: f.price, listPrice: f.disc ? f.normal : null, cost: num($('#eC', s.el).value), category: $('#eCa', s.el).value.trim(),
           filament: pf[0] || '', filaments: pf, options, colors: options.map((o) => o.name),
           custom: $('#eCu', s.el).checked ? { on: true, label: $('#eCl', s.el).value.trim().slice(0, 80) || 'Your text', max: Math.min(40, Math.max(1, parseInt($('#eCm', s.el).value, 10) || 12)), required: $('#eCr', s.el).value !== '0', img: +$('#eCi', s.el).value || 0 } : null,
@@ -972,7 +1024,8 @@ document.addEventListener('click', async (e) => {
     }
     if (a === 'home') { S.view = 'home'; render(); }
     if (a === 'go') { S.view = b.dataset.v; render(); scrollTo(0, 0); }
-    if (a === 'editProd') openProductEditor(b.dataset.id, !!b.dataset.bundle);
+    if (a === 'editProd') { const pr = S.products.find((x) => x.id === b.dataset.id); if (pr && pr.bundle) openBundleForm(pr.id); else openProductEditor(b.dataset.id); }
+    if (a === 'newBundle') openBundleChooser();
     if (a === 'filEdit') openFilament(b.dataset.id);
     if (a === 'filOn' || a === 'filLow') {
       const list = filamentsOf(S.settings).map((f) => ({ ...f }));

@@ -71,7 +71,7 @@ const DICT = {
     aboutHowText: '1. Pick a product, or send a custom request.\n2. Choose how you want to get it and how you pay.\n3. I print it and message you when it is ready.',
     lowStock: 'Low stock', backSoon: 'Back soon', outNote: 'This one is sold out right now. It will be back soon.',
     share: 'Share', linkCopied: 'Link copied', qty: 'Quantity',
-    preorder: 'Pre-order', yourImage: 'Your image', bundlesT: 'Bundles', allProds: 'All products', searchP: 'Search products…', noMatch: 'Nothing found', includes: 'Includes', youPay: 'You pay', payNote: 'Price for your item with your own design and colors (× the quantity you choose).', imageHint: 'Add a picture to print on it (a logo, a drawing, a photo).', imageNeeded: 'Please add an image', preorderHint: 'Want it when it is back? Send a pre-order request. I will confirm the price and when it will be ready. You pay nothing until you approve.', preorderSent: 'Pre-order sent!', needAccount: 'Please log in or create an account to pre-order.',
+    preorder: 'Pre-order', yourImage: 'Your image', bundlesT: 'Bundles', productsT: 'Products', noBundles: 'No bundles yet', searchP: 'Search products…', noMatch: 'Nothing found', includes: 'Includes', youPay: 'You pay', payNote: 'Price for your item with your own design and colors (× the quantity you choose).', imageHint: 'Add a picture to print on it (a logo, a drawing, a photo).', imageNeeded: 'Please add an image', preorderHint: 'Want it when it is back? Send a pre-order request. I will confirm the price and when it will be ready. You pay nothing until you approve.', preorderSent: 'Pre-order sent!', needAccount: 'Please log in or create an account to pre-order.',
     cartOut: 'Out of stock · back soon', cartBack: 'Back in stock!', cartAddAgain: 'Add to cart', cartNothing: 'Nothing available to buy right now.',
     soldWhile: 'Sorry, these just sold out: {n}. They moved to the bottom of your cart.', priceChanged: 'Some prices changed. Please check your order and try again.', gone: 'Not available anymore',
     account: 'Account', accOptional: 'An account is optional. You can always order as a guest.', accWhy: 'With an account you see your orders and requests on any phone, and you can pre-order sold-out items.',
@@ -143,7 +143,7 @@ const DICT = {
     aboutHowText: '1. Διάλεξε προϊόν ή στείλε αίτημα custom.\n2. Επίλεξε πώς θες να το παραλάβεις και πώς θα πληρώσεις.\n3. Το τυπώνω και σου στέλνω μήνυμα όταν είναι έτοιμο.',
     lowStock: 'Λίγα τεμάχια', backSoon: 'Σύντομα ξανά', outNote: 'Αυτό έχει εξαντληθεί αυτή τη στιγμή. Θα επανέλθει σύντομα.',
     share: 'Κοινοποίηση', linkCopied: 'Ο σύνδεσμος αντιγράφηκε', qty: 'Ποσότητα',
-    preorder: 'Προπαραγγελία', yourImage: 'Η εικόνα σου', bundlesT: 'Πακέτα', allProds: 'Όλα τα προϊόντα', searchP: 'Αναζήτηση προϊόντων…', noMatch: 'Δεν βρέθηκε τίποτα', includes: 'Περιλαμβάνει', youPay: 'Πληρώνεις', payNote: 'Η τιμή για το αντικείμενό σου με το δικό σου σχέδιο και χρώματα (× η ποσότητα που διαλέγεις).', imageHint: 'Πρόσθεσε μια εικόνα για να τυπωθεί (λογότυπο, σχέδιο, φωτογραφία).', imageNeeded: 'Πρόσθεσε μια εικόνα', preorderHint: 'Το θες όταν επανέλθει; Στείλε αίτημα προπαραγγελίας. Θα επιβεβαιώσω την τιμή και πότε θα είναι έτοιμο. Δεν πληρώνεις τίποτα μέχρι να εγκρίνεις.', preorderSent: 'Η προπαραγγελία στάλθηκε!', needAccount: 'Συνδέσου ή φτιάξε λογαριασμό για να κάνεις προπαραγγελία.',
+    preorder: 'Προπαραγγελία', yourImage: 'Η εικόνα σου', bundlesT: 'Πακέτα', productsT: 'Προϊόντα', noBundles: 'Δεν υπάρχουν πακέτα ακόμα', searchP: 'Αναζήτηση προϊόντων…', noMatch: 'Δεν βρέθηκε τίποτα', includes: 'Περιλαμβάνει', youPay: 'Πληρώνεις', payNote: 'Η τιμή για το αντικείμενό σου με το δικό σου σχέδιο και χρώματα (× η ποσότητα που διαλέγεις).', imageHint: 'Πρόσθεσε μια εικόνα για να τυπωθεί (λογότυπο, σχέδιο, φωτογραφία).', imageNeeded: 'Πρόσθεσε μια εικόνα', preorderHint: 'Το θες όταν επανέλθει; Στείλε αίτημα προπαραγγελίας. Θα επιβεβαιώσω την τιμή και πότε θα είναι έτοιμο. Δεν πληρώνεις τίποτα μέχρι να εγκρίνεις.', preorderSent: 'Η προπαραγγελία στάλθηκε!', needAccount: 'Συνδέσου ή φτιάξε λογαριασμό για να κάνεις προπαραγγελία.',
     cartOut: 'Εξαντλήθηκε · σύντομα ξανά', cartBack: 'Ξαναβρέθηκε σε απόθεμα!', cartAddAgain: 'Προσθήκη στο καλάθι', cartNothing: 'Δεν υπάρχει κάτι διαθέσιμο για αγορά αυτή τη στιγμή.',
     soldWhile: 'Λυπάμαι, μόλις εξαντλήθηκαν: {n}. Μεταφέρθηκαν στο κάτω μέρος του καλαθιού σου.', priceChanged: 'Κάποιες τιμές άλλαξαν. Έλεγξε την παραγγελία σου και δοκίμασε ξανά.', gone: 'Δεν είναι πια διαθέσιμο',
     account: 'Λογαριασμός', accOptional: 'Ο λογαριασμός είναι προαιρετικός. Μπορείς πάντα να παραγγείλεις ως επισκέπτης.', accWhy: 'Με λογαριασμό βλέπεις τις παραγγελίες και τα αιτήματά σου από οποιοδήποτε κινητό και μπορείς να κάνεις προπαραγγελία σε εξαντλημένα.',
@@ -288,9 +288,11 @@ function viewShop() {
   if (!S.products.length) return h + `<div class="empty">${esc(t('noProducts'))}</div>`;
   const enter = !S.entered; S.entered = true;
   const bundles = S.products.filter((p) => p.bundle), singles = S.products.filter((p) => !p.bundle);
+  const tab = S.shopTab === 'bundles' ? 'bundles' : 'products';
+  h += `<div class="row" style="gap:8px;margin-bottom:12px"><button class="btn${tab === 'products' ? ' pri' : ''} grow" data-act="stab" data-v="products">🧩 ${esc(t('productsT'))}</button><button class="btn${tab === 'bundles' ? ' pri' : ''} grow" data-act="stab" data-v="bundles">🎁 ${esc(t('bundlesT'))}</button></div>`;
   h += `<input class="in" id="shopQ" type="search" placeholder="🔍 ${esc(t('searchP'))}" autocomplete="off" style="margin-bottom:14px">`;
-  if (bundles.length) h += `<div id="bunSec"><div class="h2">🎁 ${esc(t('bundlesT'))}</div><div class="grid${enter ? ' enter' : ''}">${bundles.map(prodCard).join('')}</div><div class="gap"></div>${singles.length ? `<div class="h2">${esc(t('allProds'))}</div>` : ''}</div>`;
-  h += `<div class="grid${enter ? ' enter' : ''}">` + singles.map(prodCard).join('') + `</div><div class="empty hide" id="noMatch">${esc(t('noMatch'))}</div>`;
+  const list = tab === 'bundles' ? bundles : singles;
+  h += list.length ? `<div class="grid${enter ? ' enter' : ''}">${list.map(prodCard).join('')}</div><div class="empty hide" id="noMatch">${esc(t('noMatch'))}</div>` : `<div class="empty">${esc(tab === 'bundles' ? t('noBundles') : t('noProducts'))}</div>`;
   h += `<p class="mut sm" style="text-align:center;margin:22px 0 6px">${esc(t('trust'))}</p>`;
   return h;
 }
@@ -1013,7 +1015,6 @@ document.addEventListener('input', (e) => {
   const cards = $$('.prod[data-s]');
   let n = 0;
   cards.forEach((c) => { const ok = !q || c.dataset.s.includes(q); c.style.display = ok ? '' : 'none'; if (ok) n++; });
-  const sec = $('#bunSec'); if (sec) sec.style.display = q && !$$('#bunSec .prod[data-s]').some((c) => c.style.display !== 'none') ? 'none' : '';
   const nm = $('#noMatch'); if (nm) nm.classList.toggle('hide', n > 0);
 });
 document.addEventListener('click', (e) => {
@@ -1022,6 +1023,7 @@ document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-act]');
   if (!b) return;
   const a = b.dataset.act;
+  if (a === 'stab') { S.shopTab = b.dataset.v; renderMain(); return; }
   if (a === 'tab') { S.tab = b.dataset.tab; renderMain(true); scrollTo(0, 0); }
   if (a === 'open') openProduct(b.dataset.id);
   if (a === 'cart') openCart();
