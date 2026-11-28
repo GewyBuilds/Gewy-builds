@@ -342,7 +342,6 @@ function openProductEditor(id) {
           options.push({ name: o.name.trim(), filament: o.filaments[0] || '', filaments: o.filaments, images: oi });
         }
         const published = $('#eV', s.el).checked;
-        if (bundle && bundle.pids.length + bundle.extra.length < 2) { toast('A bundle needs at least 2 items.', 4000); b.disabled = false; b.textContent = old ? 'Save changes' : 'Publish product'; return; }
         const data = {
           name, price: f.price, listPrice: f.disc ? f.normal : null, cost: num($('#eC', s.el).value), category: $('#eCa', s.el).value.trim(),
           filament: pf[0] || '', filaments: pf, options, colors: options.map((o) => o.name),
